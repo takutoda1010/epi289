@@ -1,0 +1,127 @@
+---
+title: "Homework0"
+author: "Takuto Yoshida"
+date: "2023-01-24"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Read in the nhefs.xlsx file from the EPI 289 course website. Show your log to demonstrate that the file was successfully assigned.  
+```{r}
+# Question1
+install.packages("readxl", repos = "http://cran.us.r-project.org") # read excel file
+library("readxl")
+df <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework0/nhefs.xlsx")
+```
+
+2. Sort the data set by the variable seqn. Print out the ID number, age, and sex for the first 10 observations. 
+```{r}
+# Question2
+## Sorting the data
+df[1:10, c("seqn", "age", "sex")]
+```
+3. Find the mean systolic blood pressure and standard error for men and for women.
+```{r}
+# Question3
+summary(df$sbp) # 77 missing values
+mean(df$sbp, na.rm=T)
+sd(df$sbp, na.rm=T)
+```
+4. What is the mean, 25th percentile, 50th percentile, 75th percentile, and interquartile range of weight in 1971 (in kilograms).
+```{r}
+# Question 4
+summary(df$wt71) # No missing value
+mean(df$wt71)
+quantile(df$wt71, probs = c(0.25, 0.50, 0.75))
+IQR(df$wt71)
+```
+5a. Using ifelse statements, create a new categorical variable corresponding to quartiles of weight in 1971 as based on the cut-points from Question (4). Give a tabulation of your results. 
+```{r}
+# Question 5a
+## Create the new variables
+df$wt71_cat <- ifelse(df$wt71<=59.65, 1, ifelse(df$wt71<=69.40, 2, ifelse(df$wt71<=79.95, 3, 4)))
+
+## Tabulate the categorical variable
+table(df$wt71_cat)                      
+```
+
+5b. Create quartiles for weight in 1971 using cut in R. Give a tabulation of your results. Do your results match those of Question (5a)? Why or why not?
+```{r}
+# Question 5b
+df_quart <- cut(df$wt71, breaks = c(-Inf, quantile(df$wt71, probs = c(0.25)), quantile(df$wt71, probs = c(0.5)), quantile(df$wt71, probs = c(0.75)), Inf))
+
+table(df_quart)
+```
+
+6. 	Using lm in R, fit a univariate linear regression model for the outcome weight in 1971 with number of cigarettes smoked per day in 1971 as the predictor. Report the parameter estimate for cigarettes smoked per day. 
+```{r}
+# Question 6
+linear_model <- lm(df$wt71 ~ df$smokeintensity, data = df)
+summary(linear_model)
+coef(linear_model)
+confint(linear_model)
+```
+
+7.   Create a cross-tabulation between sex and race.
+```{r}
+# Question 7
+table(df$sex, df$race, dnn = c("sex", "race"))
+```
+
+8. 	Using lm in R, fit a multivariate linear regression model for the outcome weight in  1971 with age, sex, and race as the predictors. From this model, print the observed and predicted values of weight in 1971 for the first 5 observations. What is the predicted value of weight in 1971 for an individual of age 40, female, and of Black or other race/ethnicity? 
+```{r}
+# Question8
+## Fit the multivariable linear regression model
+df$sex <- as.factor(df$sex)
+df$race <- as.factor(df$race)
+adj_linear_model <- lm(wt71 ~ age + sex + race, data = df)
+
+## Get the predicted values for the first 5 observations
+predicted_values <- predict(adj_linear_model, newdata = df[1:5,])
+
+## Get the observed value for the first 5 observations
+observed_values <- df$wt71[1:5]
+
+## Print the observed and predicted values
+cbind(Observed = observed_values, Predicted = predicted_values)
+```
+
+9. 	Fit the same model from Question (8) using glm in R and compare your results. 
+```{r}
+# Question9
+adj_linear_model_2 <- glm(wt71 ~ age + sex + race, data = df)
+
+## Get the predicted values for the first 5 observations
+predicted_values_2 <- predict(adj_linear_model_2, newdata = df[1:5,])
+
+## Get the observed value for the first 5 observations
+observed_values <- df$wt71[1:5]
+
+## Print the observed and predicted values
+cbind(Observed = observed_values, Predicted = predicted_values_2)
+```
+
+10. Using glm with family specified as binomial in R, fit a multivariate logistic regression model for the outcome asthma diagnosis in 1971 with age, sex, race, and usual physical activity status (var active) as the predictors. Print the predicted probabilities of asthma diagnosis for the individuals with the first 5 ID numbers. 
+```{r}
+# Question10
+## Fit the multivariable logistic regression model
+df$asthma <- as.factor(df$asthma)
+df$active <- as.factor(df$active)
+adj_linear_model_3 <- glm(asthma ~ age + sex + race + active, data = df, family = binomial(link = 'logit'))
+
+## Get the predicted values for the first 5 observations
+predicted_values_3 <- predict(adj_linear_model_3, newdata = df[1:5,], type = "response")
+predicted_values_3
+```
+
+11. (Optional) Create a graph that plots systolic blood pressure on the Y-axis and usual physical activity status (var active) on the X-axis.
+```{r}
+# Question 11
+boxplot(sbp ~ active, data = df, xlab="Usual physical activity status", ylab="Systolic blood pressure", main="Q11 Answer")
+```
