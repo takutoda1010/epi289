@@ -30,8 +30,25 @@ df[1:10, c("seqn", "age", "sex")]
 ```{r}
 # Question3
 summary(df$sbp) # 77 missing values
-mean(df$sbp, na.rm=T)
-sd(df$sbp, na.rm=T)
+
+# Separate the dataset by gender
+df_men <- subset(df, sex==0)
+df_women <- subset(df, sex==1)
+summary(df_men$sbp) # 45 missing values
+summary(df_women$sbp) # 32 missing values
+
+# Find the mean and standard error of systolic blood pressure in men
+mean_sbp_men <- mean(df_men$sbp, na.rm=T)
+se_sbp_men <- sd(df_men$sbp, na.rm=T)/sqrt(length(df_men$sbp)-45)
+
+# Find the mean and standard error of systolic blood pressure in women
+mean_sbp_women <- mean(df_women$sbp, na.rm=T)
+se_sbp_women <- sd(df_women$sbp, na.rm=T)/sqrt(length(df_women$sbp)-32)
+
+# Print the results
+cbind(Mean = mean_sbp_men, SE = se_sbp_men)
+cbind(Mean = mean_sbp_women, SE = se_sbp_women)
+
 ```
 4. What is the mean, 25th percentile, 50th percentile, 75th percentile, and interquartile range of weight in 1971 (in kilograms).
 ```{r}
@@ -90,6 +107,11 @@ observed_values <- df$wt71[1:5]
 
 ## Print the observed and predicted values
 cbind(Observed = observed_values, Predicted = predicted_values)
+
+# Predicted value
+covariate_values <- data.frame(age = 40, sex = "1", race = "1")
+predicted_values_q8 <- predict(adj_linear_model, newdata = covariate_values)
+print(predicted_values_q8)
 ```
 
 9. 	Fit the same model from Question (8) using glm in R and compare your results. 
