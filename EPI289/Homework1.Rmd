@@ -1,0 +1,188 @@
+---
+title: "Homework1"
+author: "Takuto Yoshida"
+date: "2023-01-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part1
+
+## Question13
+
+```{r cars}
+# read dataset
+df <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/hmwk1 (1).csv")
+str(df)
+model1 <- glm(death ~ smk, family=binomial(link = 'logit'), data = df)
+summary(model1)
+coef(model1)
+sd(df$smk)/sqrt(length(df$smk))
+```
+
+# Part2
+
+## Question 30
+
+```{r}
+# Creating the interaction term
+df$smdr <- df$smk * df$drink
+
+# Fitting the model
+model2 <- glm(death ~ smk + drink + smdr, family=binomial(link = 'logit'), data = df)
+summary(model2)
+coef(model2)
+sd(df$smk)/sqrt(length(df$smk))
+```
+
+# Part3
+
+## Question 48
+
+```{r}
+# Fitting the model
+model3 <- glm(death ~ smk + overwt, family=binomial(link = 'logit'), data = df)
+summary(model3)
+coef(model3)
+sd(df$smk)/sqrt(length(df$smk))
+```
+
+# Part4
+
+## Question 52
+
+```{r}
+# Instrall Package
+install.packages("readxl", repos = "http://cran.us.r-project.org") # read excel file
+library("readxl")
+df_nhefs <-read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
+str(df_nhefs)
+df_nhefs$qsmk <- as.factor(df_nhefs$qsmk)
+df_nhefs$sex <- as.factor(df_nhefs$sex)
+df_nhefs$race <- as.factor(df_nhefs$race) # binary variable
+df_nhefs$age_quad <- df_nhefs$age*df_nhefs$age
+model4 <- glm(death ~ qsmk + sex + race + age + age_quad, data = df_nhefs, family=binomial('logit'))
+summary(model4)
+confint(model4, param="qsmk", level=.95)
+```
+
+# Question 57
+
+```{r}
+df_nhefs$smokeyrs_quad <- df_nhefs$smokeyrs*df_nhefs$smokeyrs
+model5 <- glm(death ~ qsmk + sex + race + age + age_quad + smokeyrs + smokeyrs_quad, data = df_nhefs, family=binomial('logit'))
+summary(model5)
+confint(model5, param="qsmk", level=.95)
+```
+
+# Part5
+
+## Question61
+
+Generate a temporary dataset that excludes observations with missing values for weight gain and create the following categories of age (25-40, 41-60, and \>60).
+
+```{r}
+# Creating a temporary dataset excluding 
+summary(df_nhefs$wt82_71) # 63 missing values
+temp_df <- df_nhefs[!is.na(df_nhefs$wt82_71) & !is.na(df_nhefs$wtloss) & df_nhefs$wtloss==0,]
+
+# Creating a new age category
+summary(df_nhefs$age) # no missing value
+temp_df$age_cat <- ifelse(temp_df$age >= 25 & temp_df$age <= 40, 0, ifelse(temp_df$age <= 60, 1, 2))
+table(temp_df$age_cat)
+
+```
+
+## Question62
+Use cut in R to generate categorical variables with 5, 10, 20 and 49 categories of age.
+```{r}
+# Check the summary of the data
+summary(temp_df$age) # Min 25, Max 74
+
+# Creating age category in 5 categories
+temp_df$age_cat_5 <- cut(temp_df$age, breaks = seq(25, 74, by = (74-25)/5), labels = c(1:5))
+table(temp_df$age_cat_5)
+
+# Creating age category in 10 categories
+temp_df$age_cat_10 <- cut(temp_df$age, breaks = seq(25, 74, by = (74-25)/10), labels = c(1:10))
+table(temp_df$age_cat_10)
+
+# Creating age category in 20 categories
+temp_df$age_cat_20 <- cut(temp_df$age, breaks = seq(25, 74, by = (74-25)/20), labels = c(1:20))
+table(temp_df$age_cat_20)
+
+# Creating age category in 49 categories
+temp_df$age_cat_49 <- cut(temp_df$age, breaks = seq(25, 74, by = (74-25)/49), labels = c(1:49))
+table(temp_df$age_cat_49)
+```
+
+## Question63
+Use plot in R to graphically explore the relation between age and weight gain.
+
+```{r}
+plot(temp_df$age, temp_df$wt82_71, xlab="Age", ylab="weight gain", main="Question 63 Answer")
+```
+
+## Question64
+Fit a linear regression model of the form wt82_71= α0 + α1Age with age as a continuous variable and plot the values predicted by the model against the observed values.
+```{r}
+# Fitting the linear model
+lm_mod <- lm(wt82_71 ~ age, data = temp_df)
+
+# Plotting the values predicted by the model against the observed values
+plot(temp_df$age, temp_df$wt82_71, xlab="Age", ylab="weight gain", main="Question 64 Answer")
+abline(lm_mod, col = "red")
+```
+
+## Question 65.
+Similarly, fit a linear regression model of the form wt82_71= α0 + α1Age + α2Age2 and plot the values predicted by the model against the observed values.
+```{r}
+# Fitting the linear model
+lm_mod_2 <- lm(wt82_71 ~ age + I(age^2), data=temp_df)
+
+# plotting the values predicted by the model against the observed values.
+plot(temp_df$age, temp_df$wt82_71, xlab="Age", ylab="weight gain", main="Question 65 Answer")
+abline(lm_mod_2, col="red")
+```
+
+# Question 66.
+Fit a linear regression model including age in 5, 10, 20 and 49 categories and plot the values predicted by the model against the observed values.
+```{r}
+# Fitting the moderl by using age in 5 category and plot the predicted and observed values
+lm_mod_3 <- lm(wt82_71 ~ age_cat_5, data=temp_df)
+predicted_value_5 <- predict(lm_mod_3, temp_df)
+plot(temp_df$wt82_71, predicted_value_5)
+
+# Fitting the moderl by using age in 10 category and plot the predicted and observed values
+lm_mod_4 <- lm(wt82_71 ~ age_cat_10, data=temp_df)
+predicted_value_10 <- predict(lm_mod_4, temp_df)
+plot(temp_df$wt82_71, predicted_value_10)
+
+# Fitting the moderl by using age in 20 category and plot the predicted and observed values
+lm_mod_5 <- lm(wt82_71 ~ age_cat_20, data=temp_df)
+predicted_value_20 <- predict(lm_mod_5, temp_df)
+plot(temp_df$wt82_71, predicted_value_20)
+
+# Fitting the moderl by using age in 49 category and plot the predicted and observed values
+lm_mod_6 <- lm(wt82_71 ~ age_cat_49, data=temp_df)
+predicted_value_49 <- predict(lm_mod_6, temp_df)
+plot(temp_df$wt82_71, predicted_value_49)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
