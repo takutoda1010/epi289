@@ -1,0 +1,91 @@
+---
+title: "Homework1_BST226"
+author: "Takuto Yoshida"
+date: "2023-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question1
+Calculate the mean salary for male and female faculty. What does the comparison of the means suggest about the relationship between sex and faculty salaries? 
+```{r}
+# import the data
+df <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/salary.txt")
+summary(df)
+
+# Assigning column names to a data frame
+colnames(df) <- c("ID", "sex", "years", "rank", "salary")
+
+# Calculating the average salary by sex
+library(dplyr)
+df %>% 
+  group_by(sex) %>%
+  summarize(mean_salary = mean(salary))
+```
+
+# Question2
+Using salary as the outcome variable, ﬁt a simple linear regression model with sex as the only predictor. Interpret the estimated intercept and coefﬁcient for sex.                               
+Note: sex is coded 0=Male, 1=Female. 
+```{r}
+# Fitting a simple linear regression model
+lm_mod_1 <- lm(salary ~ sex, data = df)
+summary(lm_mod_1)
+```
+# Question5
+Next, consider the effects of faculty rank and years in rank. Recall that rank is categorical with 3 levels; use the ﬁrst level (1=Assistant Professor) as the “reference” and construct dummy or indicator variables for rank . Using salary as the response variable, ﬁt a multiple linear regression model with sex, rank, and years in rank as predictors and present the table of regression coefficients, SEs, t-statistics, and p-values. 
+```{r}
+# Creating and set 2 new columns to zero
+df$rank2 = 0
+df$rank3 = 0
+
+# Where rank=2, replace the new rank2 column with value 1
+df$rank2[which(df$rank == 2)] = 1
+
+# Where rank=3, replace the new rank3 column with value 1
+df$rank3[which(df$rank == 3)] = 1
+
+# Fitting the multivariable linear moder with dummy variable
+mod_q5 <- lm(salary ~ rank2 + rank3 + sex + years, data = df)
+summary(mod_q5)
+
+```
+# Question8
+```{r}
+# Creating the residuals
+hist(residuals(mod_q5))
+
+# Creating the QQ plot of mod_q5 residuals
+library(car)
+qqPlot(mod_q5)
+
+# Doing Shapiro-Wilk test
+shapiro.test(df$salary)
+```
+# Question 9
+The Dean for Faculty Affairs conjectures that the effect of years in rank  on salaries may be different for male and female faculty. Construct a statistical test of this hypothesis. What do you conclude? 
+```{r}
+# Create the interaction term
+df$sexyrs <- df$sex * df$years
+
+# Fitting the new model by using the interaction term
+mod_q9 <- lm(salary ~ sex + years + sexyrs, data = df)
+summary(mod_q9)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
