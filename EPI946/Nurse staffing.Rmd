@@ -9,22 +9,87 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+## Install packages
+```{r}
+install.packages("readxl")
+install.packages("gganimate")
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+## Library
+```{r}
+library(readxl) # importing excel file
+library(ggplot2) # creating figure
+library(dplyr) # data manupulation
+library(gganimate) # creating animation
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Importing Data
+```{r}
+df_or <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/EPI 946/Dataset/Staffing_Data.xlsx")
+```
+
+## Checking the data
+```{r}
+str(df_or)
+summary(df_or)
+```
+There are missing values in the Traveler and LOA categories, but those need to be checked.
+
+## Dealing with missing values
+Cleaning data by assuming all missing values are 0.
+```{r}
+df_or[is.na(df_or)] <- 0
+```
+
+
+## Creating new variables
+```{r}
+# Current FTE
+df_or$Current_FTE <- df_or$Budget - df_or$Vacancy - df_or$LOA + df_or$Traveler
+
+# TN rate (Traveler Nurse rate)
+df_or$TN_rate <- df_or$Traveler / df_or$Current_FTE
+```
+
+## Figure1
+```{r}
+# Filter data for OR - West group
+df_or_west <- df_or %>% filter(`Cost Center Name`=="OR - West")
+summary(df_or_west)
+
+# Add a new variable "period" that represents the period of 2018.1 - 2022.12
+df_or_west$period <- (df_or_west$Year-2018)*12 + df_or_west$Month
+
+# Plot the graph between Current_FTE and TN_rate
+ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
+  geom_line()+
+  geom_line(aes(x = period, y = Current_FTE, color = "Current_FTE")) +
+  scale_x_continuous(limits = c(1, 71), breaks = seq(1, 72, 12), labels = c("2018.1","2018.12","2019.12","2020.12","2021.12","2022.12")) +
+  labs(x = "Period (2018.1-2022.12)", y="Value", color="Variable") +
+  theme_classic()
+
+# Plot the graph of TN_rate
+ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
+  geom_line() +
+  scale_x_continuous(limits = c(1, 71), breaks = seq(1, 72, 12), labels = c("2018.1","2018.12","2019.12","2020.12","2021.12","2022.12"))  +
+  labs(x = "Period (2018.1-2022.12)", y="Value", color="Variable") +
+  theme_classic()
+
+```
+
+## TN_rate animation
+```{r}
+install.packages("gganimate")
+library(gganimate)
+
+ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
+  geom_line() +
+  transition_reveal(period) +
+  labs(x = "Period (2018.1-2022.12)", y="Value", color="Variable") +
+  ggtitle("TN rate over time") +
+  theme_classic() + 
+  anim_number("{frame_along}")
+
+```
+
+
