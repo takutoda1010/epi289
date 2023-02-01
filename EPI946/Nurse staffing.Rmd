@@ -77,18 +77,13 @@ ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
 
 ```
 
-## TN_rate animation
 ```{r}
-install.packages("gganimate")
-library(gganimate)
+df_or_west$TN_rate_pct_change <- c(NA, 100*(df_or_west$TN_rate[-nrow(df_or_west)] - df_or_west$TN_rate[-1])/df_or_west$TN_rate[-1])
 
-ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
-  geom_line() +
-  transition_reveal(period) +
-  labs(x = "Period (2018.1-2022.12)", y="Value", color="Variable") +
-  ggtitle("TN rate over time") +
-  theme_classic() + 
-  anim_number("{frame_along}")
+
+library(zoo)
+window_size <- 3
+df_or_west$TN_rate_moving_avg <- rollmean(df_or_west$TN_rate, window_size, align="right", fill=NA)
 
 ```
 

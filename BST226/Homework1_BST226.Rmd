@@ -54,6 +54,23 @@ summary(mod_q5)
 ```
 # Question8
 ```{r}
+# Method1(Simple Diaganostic): Plot salary and years in rank
+plot(x = df$years, y = df$salary, xlab="years in rank", ylab="salary", main="Question8 Answe")
+
+# Method2(Simple Diagnostic): Using product term of years
+mod_8a <- lm(salary ~ years + I(years*years) + I(years*years*years), data = df)
+summary(mod_8a)
+
+mod_8b <- lm(salary ~ years + I(years*years) , data = df)
+summary(mod_8b)
+
+mod_8c <- lm(salary ~ years, data = df)
+summary(mod_8c)
+
+# Method3 (Intermediate Diagnostic); Plot model residuals and years.
+plot(x=residuals(mod_q5), y=df$years, xlab="RSE", ylab="years", main="Scatter plot of the residuals versus years in rank")
+
+# Method4 
 # Creating the residuals
 hist(residuals(mod_q5))
 
@@ -63,6 +80,7 @@ qqPlot(mod_q5)
 
 # Doing Shapiro-Wilk test
 shapiro.test(df$salary)
+shapiro.test(residuals(mod_q5))
 ```
 # Question 9
 The Dean for Faculty Affairs conjectures that the effect of years in rank  on salaries may be different for male and female faculty. Construct a statistical test of this hypothesis. What do you conclude? 
