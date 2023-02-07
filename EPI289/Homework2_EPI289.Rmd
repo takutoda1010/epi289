@@ -1,0 +1,185 @@
+---
+title: "Homework1_EPI289"
+author: "Takuto Yoshida"
+date: "2023-02-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install package
+```{r}
+install.packages("readxl")
+```
+
+# Import Dataset
+```{r}
+library("readxl")
+df <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
+summary(df)
+```
+
+
+# Question 4
+```{r}
+# PS: Parametric estimation with many covariates
+fit.para_q4 <- glm(qsmk ~ sex + race + as.factor(education) + as.factor(active) + age + I(age^2), data=df, family = binomial())
+summary(fit.para_q4)
+
+df$p.qsmk_q4 <- predict(fit.para_q4, type="response")
+head(cbind(df$seqn, df$sex, df$age, df$p.qsmk_q4))
+summary(df$p.qsmk_q4)
+
+# regression on continuous PS
+fit.ps.cont <- glm(death~qsmk+p.qsmk_q4+I(p.qsmk_q4^2), data=df, family=binomial())
+summary(fit.ps.cont)
+exp(coefficients(fit.ps.cont))
+exp(confint(fit.ps.cont))
+```
+
+# Part2
+```{r}
+# Create the "age50" category
+df$age50 <- ifelse(df$age>=50, 1, 0)
+
+# Create the function to find the probability of Pr(L=l)
+# Pr(L=l)
+findprob <- function(age,sex,race,df){
+  count <- sum(df$age50 == age & df$sex == sex & df$race == race)
+  total <- nrow(df)
+  return(count/total)
+}
+
+# Pr(D=1|A=0, L=l)
+findprob_d1 <- function(age,sex,race,df){
+  count_d1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death == 1 & df$qsmk == 0)
+  count_al1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 0)
+  return(count_d1/count_al1)
+}
+
+# Pr(D=1|A=1, L=l)
+findprob_d2 <- function(age,sex,race,df){
+  count_d2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death == 1 & df$qsmk == 1)
+  count_al2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 1)
+  return(count_d2/count_al2)
+}
+
+# loop through all combinations of Age, Sex, Race
+ages <- c(0, 1)
+sexes <- c(0, 1)
+races <- c(0, 1)
+
+result <- data.frame(Age=numeric(0),Sex=numeric(0),Race=numeric(0), Prob1=numeric(0), Prob2=numeric(0), Prob3=numeric(0))
+
+counter <- 1
+for (age in ages) {
+  for (sex in sexes) {
+    for (race in races) {
+      prob1 <- findprob(age, sex, race, df)
+      prob2 <- findprob_d1(age, sex, race, df)
+      prob3 <- findprob_d2(age, sex, race, df)
+      result[counter,] <- c(age,sex,race,prob1, prob2, prob3)
+      counter <- counter + 1
+    }
+  }
+}
+
+print(result)
+```
+
+```{r}
+# Question17
+# Nonparametric standardization with models
+mod_q17 <- glm(death ~ qsmk + sex + race + age50 + I(qsmk*sex) + I(qsmk*race) + I(qsmk*age50) + I(sex*race) + I(sex*age50) + I(race*age50) + I(qsmk*sex*race) + I(qsmk*sex*age50) + I(qsmk*race*age50) + I(sex*race*age50) +I(qsmk*sex*race*age50), data = df, family = binomial("logit"))
+summary(mod_q17)
+
+# Question18
+df$death_q18 <- predict(mod_q17, df, type="response")
+hist(df$death)
+hist(df$death_q18)
+df$death_q18 <- as.factor(df$death_q18)
+
+# Pr(L=l)
+findprob <- function(age,sex,race,df){
+  count <- sum(df$age50 == age & df$sex == sex & df$race == race)
+  total <- nrow(df)
+  return(count/total)
+}
+
+# Pr(D=1|A=0, L=l)
+findprob_d1_q18 <- function(age,sex,race,df){
+  count_d1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death_q18 == 1 & df$qsmk == 0)
+  count_al1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 0)
+  return(count_d1/count_al1)
+}
+
+# Pr(D=1|A=1, L=l)
+findprob_d2_q18 <- function(age,sex,race,df){
+  count_d2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death_q18 == 1 & df$qsmk == 1)
+  count_al2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 1)
+  return(count_d2/count_al2)
+}
+
+# loop through all combinations of Age, Sex, Race
+ages <- c(0, 1)
+sexes <- c(0, 1)
+races <- c(0, 1)
+
+result_q18 <- data.frame(Age=numeric(0),Sex=numeric(0),Race=numeric(0), Prob1=numeric(0), Prob2=numeric(0), Prob3=numeric(0))
+
+counter <- 1
+for (age in ages) {
+  for (sex in sexes) {
+    for (race in races) {
+      prob1 <- findprob(age, sex, race, df)
+      prob2 <- findprob_d1_q18(age, sex, race, df)
+      prob3 <- findprob_d2_q18(age, sex, race, df)
+      result_q18[counter,] <- c(age,sex,race,prob1, prob2, prob3)
+      counter <- counter + 1
+    }
+  }
+}
+
+print(result_q18)
+
+```
+
+```{r}
+# Question 19
+# create a dataset with 3 copies of each subject
+df$interv <- -1 # 1st copy: equal to original one
+
+interv0 <- df # 2nd copy: treatment set to 0, outcome to missing
+interv0$interv <- 0
+interv0$qsmk <- 0
+interv0$death <- NA
+
+interv1 <- df # 3rd copy: treatment set to 1, outcome to missing
+interv1$interv <- 1
+interv1$qsmk <- 1
+interv1$death <- NA
+
+onesample <- rbind(df, interv0, interv1) # combining datasets
+
+# logistic model to estimate mean outcome conditional on treatment and confounders
+# parameters are estimated using original observations only (df)
+# parameter estimates are used to predict mean outcome for observations with 
+# treatment set to 0 (interv=0) and to 1 (interv=1)
+
+std <- glm(death ~ qsmk + sex + race + age, data=onesample, family = binomial(link = "logit"))
+summary(std)   
+onesample$predicted_meanY <- predict(std, onesample, type="response")
+
+# estimate mean outcome in each of the groups interv=0, and interv=1
+# this mean outcome is a weighted average of the mean outcomes in each combination 
+# of values of treatment and confounders, that is, the standardized outcome
+mean(onesample[which(onesample$interv==0),]$predicted_meanY)
+mean(onesample[which(onesample$interv==1),]$predicted_meanY)
+```
+
+
+
+
+
