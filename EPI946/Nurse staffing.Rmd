@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Install packages
 ```{r}
 install.packages("readxl")
-install.packages("gganimate")
+
 ```
 
 ## Library
@@ -20,18 +20,41 @@ install.packages("gganimate")
 library(readxl) # importing excel file
 library(ggplot2) # creating figure
 library(dplyr) # data manupulation
-library(gganimate) # creating animation
+
+pacman::p_load(
+  rio,          # file import
+  here,         # locate file
+  skimr,        # Summarized data
+  tidyverse,    # Data management and ggplot2 drawing
+  gtsummary,    # Summary Statistics and Tests
+  rstatix,      # Summary Statistics and Statistical Tests
+  janitor,      # Add totals and percentages to tables
+  scales,       # Convert to percentages
+  flextable     # Convert tables to clean images
+  )
 ```
 
 ## Importing Data
 ```{r}
 df_or <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/EPI 946/Dataset/Staffing_Data.xlsx")
+
+# nsqip <- read.csv("")
+
 ```
 
 ## Checking the data
 ```{r}
+# OR data
 str(df_or)
 summary(df_or)
+skim(df_or)
+head(df_or)
+
+# NSQIP data
+# str(nsqip)
+# summary(nsqip)
+# skim(nsqip)
+# head(nsqip)
 ```
 There are missing values in the Traveler and LOA categories, but those need to be checked.
 
@@ -60,12 +83,12 @@ summary(df_or_west)
 # Add a new variable "period" that represents the period of 2018.1 - 2022.12
 df_or_west$period <- (df_or_west$Year-2018)*12 + df_or_west$Month
 
-# Plot the graph between Current_FTE and TN_rate
-ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
+# Plot the graph between Current_FTE and Travelor nurse
+ggplot(df_or_west, aes(x = period, y = Traveler, color = "Traveler")) +
   geom_line()+
   geom_line(aes(x = period, y = Current_FTE, color = "Current_FTE")) +
   scale_x_continuous(limits = c(1, 71), breaks = seq(1, 72, 12), labels = c("2018.1","2018.12","2019.12","2020.12","2021.12","2022.12")) +
-  labs(x = "Period (2018.1-2022.12)", y="Value", color="Variable") +
+  labs(x = "Period (2018.1-2022.12)", y="Number of Nurse", color="Variable") +
   theme_classic()
 
 # Plot the graph of TN_rate
@@ -78,13 +101,78 @@ ggplot(df_or_west, aes(x = period, y = TN_rate, color = "TN rate")) +
 ```
 
 ```{r}
-df_or_west$TN_rate_pct_change <- c(NA, 100*(df_or_west$TN_rate[-nrow(df_or_west)] - df_or_west$TN_rate[-1])/df_or_west$TN_rate[-1])
+# Prepandemic dataframe from 2018.1 - 2020.12
+df_or_west_prepandemic <- df_or_west[df_or_west$Year >= 2018 & df_or_west$Year <= 2020,]
 
+table(df_or_west_prepandemic$Year, df_or_west_prepandemic$Month)
+table(df_or$Year, df_or$Month)
 
-library(zoo)
-window_size <- 3
-df_or_west$TN_rate_moving_avg <- rollmean(df_or_west$TN_rate, window_size, align="right", fill=NA)
+# Baseline Current_FTE and TN_rate (from2018.1 - 2020.12)
+## Mean
+mean(df_or_west_prepandemic$Current_FTE)
+mean(df_or_west_prepandemic$TN_rate)
+
+## Man of TN_rate (from 2018.1 - 2020.12)
+max(df_or_west_prepandemic$TN_rate)
+
+## Min of Current_FTE (from 2018.1 - 2020.12)
+min(df_or_west_prepandemic$Current_FTE)
+```
+
+```{r}
+# Extract TN_rate >= 0.064 from "df_or_west"
+df_high_tn_rate <- df_or_west[df_or_west$TN_rate >= 0.064, c("Year", "Month")]
+print(df_high_tn_rate) # All periods after April 2021 are equivalent.
+
+# Extract Current_FTE < 34.0
+df_low_curfte <- df_or_west[df_or_west$Current_FTE < 34.0, c("Year", "Month")]
+print(df_low_curfte) # July 2021, and Nov 2021 or later are equivalent.
+
+# Create variable of high_tn_rate and quant_short in nsqip
+nsqip$high_tn_rate <- ifelse(nsqip$Year >= 2021 & nsqip$Month >= 4, 1, 0)
+nsqip$quant_short <- ifelse(nsqip$Year = 2021 & nsqip$Month = 7, 1, 
+                            ifelse(nsqip$Year >= 2021 & nsqip$Month >= 11, 1, 0))
 
 ```
+
+## pat_vaccination
+## med_staff_vaccination
+## cov_surge
+
+## summary statistics
+
+## log transformation
+## check the assumption of linear regression
+
+## if it fail, we will do medican regression
+
+## EMM(covid variant) check
+
+# Subgroup analysis
+## Create the data for Delta and Omicron variant
+## log transformation or median regression
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

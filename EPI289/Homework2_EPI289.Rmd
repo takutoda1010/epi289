@@ -97,52 +97,23 @@ summary(mod_q17)
 
 # Question18
 df$death_q18 <- predict(mod_q17, df, type="response")
-hist(df$death)
-hist(df$death_q18)
-df$death_q18 <- as.factor(df$death_q18)
 
-# Pr(L=l)
-findprob <- function(age,sex,race,df){
-  count <- sum(df$age50 == age & df$sex == sex & df$race == race)
-  total <- nrow(df)
-  return(count/total)
-}
-
-# Pr(D=1|A=0, L=l)
-findprob_d1_q18 <- function(age,sex,race,df){
-  count_d1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death_q18 == 1 & df$qsmk == 0)
-  count_al1 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 0)
-  return(count_d1/count_al1)
-}
-
-# Pr(D=1|A=1, L=l)
-findprob_d2_q18 <- function(age,sex,race,df){
-  count_d2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$death_q18 == 1 & df$qsmk == 1)
-  count_al2 <- sum(df$age50 == age & df$sex == sex & df$race == race & df$qsmk == 1)
-  return(count_d2/count_al2)
-}
-
-# loop through all combinations of Age, Sex, Race
-ages <- c(0, 1)
-sexes <- c(0, 1)
-races <- c(0, 1)
-
-result_q18 <- data.frame(Age=numeric(0),Sex=numeric(0),Race=numeric(0), Prob1=numeric(0), Prob2=numeric(0), Prob3=numeric(0))
-
-counter <- 1
-for (age in ages) {
-  for (sex in sexes) {
-    for (race in races) {
-      prob1 <- findprob(age, sex, race, df)
-      prob2 <- findprob_d1_q18(age, sex, race, df)
-      prob3 <- findprob_d2_q18(age, sex, race, df)
-      result_q18[counter,] <- c(age,sex,race,prob1, prob2, prob3)
-      counter <- counter + 1
-    }
-  }
-}
-
-print(result_q18)
+predict(mod_q17, data.frame(cbind(age50=0, sex=0, race=0, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=0, race=0, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=0, race=1, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=0, race=1, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=1, race=0, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=1, race=0, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=1, race=1, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=0, sex=1, race=1, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=0, race=0, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=0, race=0, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=0, race=1, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=0, race=1, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=1, race=0, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=1, race=0, qsmk=1)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=1, race=1, qsmk=0)), type="response")
+predict(mod_q17, data.frame(cbind(age50=1, sex=1, race=1, qsmk=1)), type="response")
 
 ```
 
@@ -168,15 +139,14 @@ onesample <- rbind(df, interv0, interv1) # combining datasets
 # parameter estimates are used to predict mean outcome for observations with 
 # treatment set to 0 (interv=0) and to 1 (interv=1)
 
-std <- glm(death ~ qsmk + sex + race + age, data=onesample, family = binomial(link = "logit"))
+std <- glm(death ~ qsmk + sex + race + age50, data=onesample, family = binomial(link = "logit"))
 summary(std)   
 onesample$predicted_meanY <- predict(std, onesample, type="response")
 
 # estimate mean outcome in each of the groups interv=0, and interv=1
 # this mean outcome is a weighted average of the mean outcomes in each combination 
 # of values of treatment and confounders, that is, the standardized outcome
-mean(onesample[which(onesample$interv==0),]$predicted_meanY)
-mean(onesample[which(onesample$interv==1),]$predicted_meanY)
+mean(onesample[which(onesample$interv==1),]$predicted_meanY) - mean(onesample[which(onesample$interv==0),]$predicted_meanY)
 ```
 
 
