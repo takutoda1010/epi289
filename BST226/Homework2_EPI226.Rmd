@@ -1,0 +1,157 @@
+---
+title: "Homework2_EPI226"
+author: "Takuto Yoshida"
+date: "2023-02-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install packages
+```{r}
+install.packages("nlme")
+library(nlme)
+library(ggplot2)
+```
+
+
+
+## Question1
+```{r}
+# Import data set
+compgrip <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment2/compgrip.txt")
+colnames(compgrip) <- c("ID", "trmt", "y0", "y1", "y2", "y3") 
+head(compgrip)
+
+# Calculate means over time by group from wide format data
+# subset to include each treatment group only "A" which is "Treat == 1".
+compgripA <- compgrip[which(compgrip$trmt==1),]
+head(compgripA)
+
+# create means over time data frame by group
+compgripA.n <- sapply(compgripA[,3:6],length)
+compgripA.mean <- sapply(compgripA[,3:6],mean)
+compgripA.sd <- sapply(compgripA[,3:6],sd)
+compgripA.var <- sapply(compgripA[,3:6],var)
+
+sumcompgrip.wide <- data.frame(Group=rep("A",4),
+                            N=compgripA.n,
+                            Mean=compgripA.mean,
+                            SD=compgripA.sd,
+                            VAR=compgripA.var)
+sumcompgrip.wide
+```
+# Question2
+```{r}
+# 4 by 4 covariance and correlation matrices for the four repeated major of grip strength
+cov_matrix <- cov(compgripA[,3:6])
+cor_matric <- cor(compgripA[,3:6])
+cov_matrix
+cor_matric
+```
+
+# Question3
+```{r}
+# Extract the diagonal elements of the covariance matrix
+variances <- diag(cov_matrix)
+
+# Compare the values to the results from Part1
+result_q3 <- identical(variances, compgripA.var)
+result_q3
+compgripA.var
+variances
+```
+
+# Question4
+Correlation and covariance are related as shown below.
+$$
+Covariance(X, Y) = \frac{1}{n}\sum_{i=1}^{n} (x_i - \bar{x})(y_i - \bar{y})
+$$
+$$
+Standard\ Deviation(X) = \sqrt{Variance(X)}
+$$
+$$
+Correlation(X, Y) = \frac{Covariance(X, Y)}{Standard\ Deviation(X) \cdot Standard\ Deviation(Y)}
+$$
+To prove this using R, I wrote the following code. 
+```{r}
+# Calculate covariance between baseline and week1
+cov_bw_b1 <- cov_matrix[1,2]
+
+# Calculate standard deviation of baseline and week1
+sd_b <- compgripA.sd[1]
+sd_b <- as.numeric(sd_b)
+sd_w1 <- compgripA.sd[2]
+sd_w1 <- as.numeric(sd_w1)
+
+# Calculate correlation between baseline and week1
+cor_bw_b1 <- cor(compgripA[,3], compgripA[,4])
+
+# Verify that the correlation equals the covariance divided by the product of the standard deviations
+result_q4 <- identical(cor_bw_b1, cov_bw_b1/(sd_b*sd_w1))
+result_q4
+```
+
+# Question 5
+
+```{r}
+# Data in Long Format
+longgrip <- reshape(compgripA, 
+                    direction = "long",
+                    varying = list(names(compgripA)[3:6]),
+                    v.names = "y",
+                    timevar = "week",
+                    times=c(0, 1, 2, 3))
+longgrip <- longgrip[order(longgrip$id),]
+
+# Spaghetti Plot
+spag.data <- longgrip[which(longgrip$id <=8),]
+spag <- ggplot(data = spag.data, aes(x = week, y=y, group=id))
+spag + geom_line() + aes(colour = factor(id)) + labs(x="Time in Weeks", y="Response Variable(units)", title="Spaghetti Plot of Observed Trajectories of Grip Strength for first 8 Subjects") + theme(legend.position = "bottom")
+```
+It is estimated that grip strength is increasing week by week in all patients.
+
+```{r}
+# Mean response versus time
+meangrip <- aggregate(longgrip$y, list(longgrip$week), mean)
+colnames(meangrip) <- c("Time in Weeks", "Response Variable (units)")
+plot(meangrip, type="b", col="Blue",
+     main="Main Response Variable over Time",
+     xlab="Time in Weeks", ylab="Response Variable(units)")
+```
+The mean grip strength is considered to be on an upward trend over time. 
+
+# Question 6 - 10
+```{r}
+# Change week into factor w/ correct reference category
+longgrip$week <- relevel(factor(longgrip$week), ref="0")
+
+# Create "position" variable for observations within a subject
+longgrip$t <- as.integer(longgrip$week)
+
+# Run model with unstructured correlation matrix
+model <- gls(y ~ week, data=longgrip, corr=corSymm(form=~t|id),
+             weights = varIdent(form=~1|week), method = "REML")
+
+# Print model summary
+summary(model)
+anova(model)
+
+# Print covariance/correlation matrix
+getVarCov(model)
+cov2cor(getVarCov(model))
+```
+
+
+
+
+
+
+
+
+
+
+
+

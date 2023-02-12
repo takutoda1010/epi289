@@ -1,0 +1,65 @@
+---
+title: "Homework3_EPI289"
+author: "Takuto Yoshida"
+date: "2023-02-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install package
+```{r}
+install.packages("readxl")
+```
+
+# Import Dataset
+```{r}
+library("readxl")
+nhefs <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
+nhefs.nmv <- nhefs[which(!is.na(nhefs$wt82)),] 
+summary(nhefs)
+```
+
+```{r}
+# Create a 2*2 cross table of sex and race for qsmk=0
+nhefs_qsmk0 <- subset(nhefs, qsmk==0)
+cross_table_qsmk0 <- table(nhefs_qsmk0$race, nhefs_qsmk0$qsmk)
+row_proportions0 <- prop.table(cross_table_qsmk0, 1)
+print(row_proportions0)
+
+# Create a 2*2 cross table of sex and race for qsmk=1
+nhefs_qsmk1 <- subset(nhefs, qsmk==1)
+cross_table_qsmk1 <- table(nhefs_qsmk0$race, nhefs_qsmk0$qsmk)
+row_proportions1 <- prop.table(cross_table_qsmk1, 1)
+print(row_proportions1)
+
+
+nhefs.nmv$w <- ifelse(nhefs.nmv$sex==0,
+                      ifelse(nhefs.nmv$race==0,
+                             ifelse(nhefs.nmv$qsmk==1, 1/0.8629893, 1/(1-0.8629893)),
+                             ifelse(nhefs.nmv$qsmk==1,)))
+  
+  0.40383+0.4487+0.0641+0.0832
+  
+  
+  
+  
+nhefs.nmv$w <- ifelse(nhefs.nmv$age50==1, 
+                      ifelse(nhefs.nmv$qsmk==1, 1/0.3333, 1/(1-0.3333)),
+                      ifelse(nhefs.nmv$qsmk==1, 1/0.2250, 1/(1-0.2250)))
+
+mean(nhefs$death[nhefs$sex==0&nhefs$race==0 & nhefs$qsmk==0])
+mean(nhefs$death[nhefs$sex==0&nhefs$race==0 & nhefs$qsmk==1])
+mean(nhefs$death[nhefs$sex==0&nhefs$race==1 & nhefs$qsmk==0])
+mean(nhefs$death[nhefs$sex==0&nhefs$race==1 & nhefs$qsmk==1])
+mean(nhefs$death[nhefs$sex==1&nhefs$race==0 & nhefs$qsmk==0])
+mean(nhefs$death[nhefs$sex==1&nhefs$race==0 & nhefs$qsmk==1])
+mean(nhefs$death[nhefs$sex==1&nhefs$race==1 & nhefs$qsmk==0])
+mean(nhefs$death[nhefs$sex==1&nhefs$race==1 & nhefs$qsmk==1])
+
+```
+
+
+

@@ -1,0 +1,160 @@
+---
+title: "Homework2_BST223"
+author: "Takuto Yoshida"
+date: "2023-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Library
+```{r}
+library("survival")
+```
+
+
+# Question1(b)
+```{r}
+# Import dataset
+q1_dat <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework2/Q1data.csv")
+summary(q1_dat)
+
+```
+```{r}
+# Standard normal approximation approach to ge the 95% CI
+fit.km.plain <- survfit(Surv(respdays, response==1)~1, data=q1_dat, conf.type = "plain")
+summary(fit.km.plain)
+```
+```{r}
+# The log-log approach
+fit.km.loglog <- survfit(Surv(respdays, response==1)~1, data=q1_dat,
+                         conf.type = "log-log")
+summary(fit.km.loglog)
+```
+
+# Question1(c)
+```{r}
+# Plot the survival function
+plot(fit.km.plain, main = "Kaplan-Meier Estimate of Survivor Curve",
+     xlab="Time", ylab="S(t)", col="red", mark.time = TRUE)
+par(new=TRUE) #command to overlay the next plot on top of the previous one
+plot(fit.km.loglog, main = "Kaplan-Meier Estimate of Survivor Curve",
+     xlab="Time", ylab="S(t)", col="blue", mark.time = TRUE)
+legend("bottomleft", fill=c("red","blue"), legend=c("plain", "log-log"))
+```
+
+# Question1(d)
+```{r}
+# Estimated median survival
+km.surv_fit_quantile <- quantile(fit.km.plain, probs = c(0.25, 0.75))
+do.call(cbind, km.surv_fit_quantile) # show the quantiles list as a little table
+
+# add quantiles to plot
+plot(fit.km.plain, main = "Kaplan-Meier Estimate of Survivor Curve",
+     xlab="Time", ylab="S(t)", col="red", mark.time = TRUE)
+par(new=TRUE) #command to overlay the next plot on top of the previous one
+plot(fit.km.loglog, main = "Kaplan-Meier Estimate of Survivor Curve",
+     xlab="Time", ylab="S(t)", col="blue", mark.time = TRUE)
+legend("bottomleft", fill=c("red","blue"), legend=c("plain", "log-log"))
+abline(h = c(0.75, 0.25), lty=c("dotted", "dotted"))
+legend("topright", lty="dotted", legend = "percentiles")
+axis(side = 4, at = c(0.75, 0.25), labels = c("25th", "75th"),
+     las = 2, mgp = c(0.2, 0.2, 0.2),
+     tick = FALSE)
+
+```
+
+# Question1(e)
+```{r}
+# Question(e)
+s_km <- fit.km.plain$surv
+
+# Calculate the estimated cumulative hazard rate
+lambda_km <- -log(s_km)
+
+# Create a data frame with the results
+result <- data.frame(time=fit.km.plain$time, lambda_km = lambda_km)
+result
+```
+
+# Question(f)
+```{r}
+fh.fit <- survfit(Surv(respdays,response==1)~1, data=q1_dat,
+                  type="fleming-harrington")
+plot(fh.fit, main = "Nelson-Aalen curves", xlab= "Time", ylab = "S(t)",
+     mark.time = TRUE, col=c("red", "blue"), ylim=c(0.4, 1.0))
+legend(x=0, y=0.5, legend=c("Placebo", "Experimental drug"),
+       col=c("red", "blue"), lty=1, cex=0.8)
+```
+
+```{r}
+# Question(f)
+s_na <- fh.fit$surv
+
+# Calculate the estimated cumulative hazard rate
+lambda_na <- -log(s_na)
+
+# Create a data frame with the results
+result_q8 <- data.frame(time=fh.fit$time, lambda_na = lambda_na)
+result_q8
+```
+
+# Question(g)
+```{r}
+result_q9 <- data.frame(time = fh.fit$time, s_na = s_na)
+result_q9
+```
+
+# Question2
+## Question2(a)
+```{r}
+MI_dat <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework2/MIstudy_2023.csv")
+summary(MI_dat)
+```
+
+```{r}
+# Fit the Kaplan-Meier curves 
+fit.km_MI <- survfit(Surv(MI_dat$dthtime, MI_dat$dthstat)~MI_dat$obese_ovwt, data=MI_dat, conf.type = "plain")
+summary(fit.km_MI)
+
+# Plot the survival function
+plot(fit.km_MI, main = "Kaplan-Meier Estimate of Survivor Curve",
+     xlab = "Time", ylab="S(t)", col=c("Red","Blue"), mark.time=TRUE)
+legend("bottomleft", fill = c("red", "blue"), legend = c("Overweight/Obese", "Normal Weight"), lty=1)
+```
+```{r}
+# Calculate the percdentage of patients who are overweight or obese
+overweight_obese <- sum(MI_dat$bmi >= 25)
+percent_overweight_obese <- overweight_obese/nrow(MI_dat)*100
+percent_overweight_obese
+```
+
+
+# Question2(b)
+```{r}
+# log-rank test
+log_rank <- survdiff(Surv(dthtime, dthstat)~obese_ovwt, data=MI_dat, rho=0)
+log_rank
+
+# Wilcoxon test
+wilcoxon <- survdiff(Surv(dthtime, dthstat)~obese_ovwt, data=MI_dat, rho=1)
+wilcoxon
+```
+
+# Question2(c)
+```{r}
+# Create the 2 by 2 table 
+tab <- table(MI_dat$obese_ovwt, MI_dat$dthstat)
+# chi-squared test
+chisq.test(tab)
+
+# Fit logistic regression model
+fit.logit <- glm(dthstat ~ obese_ovwt, data=MI_dat, family=binomial())
+summary(fit.logit)
+```
+
+
+
+
+
