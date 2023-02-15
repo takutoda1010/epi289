@@ -22,7 +22,7 @@ summary(q1_dat)
 
 ```
 ```{r}
-# Standard normal approximation approach to ge the 95% CI
+# Standard normal approximation approach to get the 95% CI
 fit.km.plain <- survfit(Surv(respdays, response==1)~1, data=q1_dat, conf.type = "plain")
 summary(fit.km.plain)
 ```
@@ -47,7 +47,7 @@ legend("bottomleft", fill=c("red","blue"), legend=c("plain", "log-log"))
 # Question1(d)
 ```{r}
 # Estimated median survival
-km.surv_fit_quantile <- quantile(fit.km.plain, probs = c(0.25, 0.75))
+km.surv_fit_quantile <- quantile(fit.km.plain, probs = c(0.25, 0.5, 0.75))
 do.call(cbind, km.surv_fit_quantile) # show the quantiles list as a little table
 
 # add quantiles to plot
@@ -57,9 +57,9 @@ par(new=TRUE) #command to overlay the next plot on top of the previous one
 plot(fit.km.loglog, main = "Kaplan-Meier Estimate of Survivor Curve",
      xlab="Time", ylab="S(t)", col="blue", mark.time = TRUE)
 legend("bottomleft", fill=c("red","blue"), legend=c("plain", "log-log"))
-abline(h = c(0.75, 0.25), lty=c("dotted", "dotted"))
+abline(h = c(0.75, 0.5, 0.25), lty=c("dotted", "dotted", "dotted"))
 legend("topright", lty="dotted", legend = "percentiles")
-axis(side = 4, at = c(0.75, 0.25), labels = c("25th", "75th"),
+axis(side = 4, at = c(0.75, 0.5, 0.25), labels = c("25th", "50th", "75th"),
      las = 2, mgp = c(0.2, 0.2, 0.2),
      tick = FALSE)
 

@@ -20,6 +20,7 @@ install.packages("readxl")
 library(readxl) # importing excel file
 library(ggplot2) # creating figure
 library(dplyr) # data manupulation
+library(car) # check VIF
 
 pacman::p_load(
   rio,          # file import
@@ -129,20 +130,96 @@ df_low_curfte <- df_or_west[df_or_west$Current_FTE < 34.0, c("Year", "Month")]
 print(df_low_curfte) # July 2021, and Nov 2021 or later are equivalent.
 
 # Create variable of high_tn_rate and quant_short in nsqip
-nsqip$high_tn_rate <- ifelse(nsqip$Year >= 2021 & nsqip$Month >= 4, 1, 0)
-nsqip$quant_short <- ifelse(nsqip$Year = 2021 & nsqip$Month = 7, 1, 
-                            ifelse(nsqip$Year >= 2021 & nsqip$Month >= 11, 1, 0))
+# nsqip$high_tn_rate <- ifelse(nsqip$Year >= 2021 & nsqip$Month >= 4, 1, 0)
+# nsqip$quant_short <- ifelse(nsqip$Year = 2021 & nsqip$Month = 7, 1, 
+#                             ifelse(nsqip$Year >= 2021 & nsqip$Month >= 11, 1, 0))
 
 ```
 
-## pat_vaccination
-## med_staff_vaccination
-## cov_surge
+## Create new variables
+```{r}
+# patient vaccination was started on Dec 2020.
+# nsqip$pat_vac <- ifelse(nsqip$Year >= 2020 & nsqip$Month >= 12, 1, 0)
 
+# Med staff vaccination was started on Dec, 2020 as well
+# nsqip$med_staff_vac <- ifelse(nsqip$Year >= 2020 & nsqip$Month >= 12, 1, 0)
+
+# COVID-19 was surged in March20,2020- June20,2020, Oct16,2020-May31,2021, July20,2021-March15,2022
+# cov_surg <- ifelse(nsqip$Year == 2020 & nsqip$Month >= 3 & nsqip$)
+# nsqip$cov_surg[which(nsqip$Year == 2020 & (nsqip$Month == 3 & nsqip$Date >= 20) | 
+#                      (nsqip$Month >= 4 & nsqip$Month <= 6) | 
+#                      (nsqip$Month == 6 & nsqip$Date <= 20))] <- 1
+# nsqip$cov_surg[which(nsqip$Year == 2020 & nsqip$Month == 10 & nsqip$Date >= 16) |
+#                       (nsqip$Year == 2021 &nsqip$Month >= 11) |
+#                       (nsqip$Year == 2021 & nsqip$Month >= 1 & nsqip$ Month <= 5)] <- 1
+# nsqip$cov_surg[which(nsqip$Year == 2021 & nsqip$Month >= 7 & nsqip$Day >= 20) |
+#                  (nsqip$Year == 2021 & nsqip$Month >= 8) |
+#                  (nsqip$Year == 2022 & nsqip$Month <=4) |
+#                  (nsqip$Year == 2022 & nsqip$Month == 5 & nsqip$Day <= 15)] <- 1
+```
+
+# Table1
 ## summary statistics
+```{r}
+linelist %>% 
+  select(age_at_time_of_surgery, sex, race, bmi, dm, cancer, ckd, ht, copd, pat_vac, cov_infec, elective_surgery, ) %>% # variables of interest
+  tbl_summary(     
+    by = high_tn_rate,                                          # group by high_tn_rate
+    statistic = list(all_continuous() ~ "{mean} ({sd})",        # for continuous variable
+                     all_categorical() ~ "{n} / {N} ({p}%)"),   # for categorical variable
+    digits = all_continuous() ~ 1,                              # round the numbers
+    type   = all_categorical() ~ "categorical",                 # Forced display of all category levels
+    label  = list(                                              # Display column name labels
+      age_at_time_of_surgery ~ "Age",
+      sex   ~ "Sex",                           
+      race ~ "Race",
+      bmi    ~ "BMI",
+      dm ~ "Diabetes",
+      cancer ~ "Cancer",
+      ckd ~ "Chronic Kidney Disease",
+      ht ~ "Hypertension",
+      copd ~ "COPD",
+      pat_vac ~ "Patient Vaccination at the time of surgery",
+      cov_infec ~ "Covid-19 infection at the time of surgery",
+      elective_surgery ~ "Type of surgery"
+      cci ~ "Comprehensive, Complication Index",
+      missing_text = "Missing"                                    # Display missing value
+  ))
+
+### Uncertain variables that can be extracted
+# Socioeconomic Status, CCI, Surgical difficulty, Clavien-Dindo
+ 
+```
+
+# Figure 2
+## Line graph showing when surgeries were performed during periods with nursing shortages or not.
+```{r}
+ggplot(nsqip, aes(x = as.Date(paste(Year, Month, "01", sep="-"), format="%Y-%m-%d"), y = cov_surg, color = factor(high_tn_rate))) +
+  geom_line() +
+  scale_color_discrete(name = "High TN rate") +
+  labs(x = "Date", y = "Number of surgeries", title = "Surgeries by date and high TN rate")
+```
 
 ## log transformation
+```{r}
+ccilog <- log(nsqip$cci + 1)
+```
+
+## Linear regression with log transformation
+```{r}
+mod1 <- lm(ccilog ~ age + sex + race + ... , data = nsqip)
+```
+
+
 ## check the assumption of linear regression
+```{r}
+# Collinearity Diagnostic
+vif(mod1)
+
+# 
+
+
+```
 
 ## if it fail, we will do medican regression
 
@@ -152,6 +229,10 @@ nsqip$quant_short <- ifelse(nsqip$Year = 2021 & nsqip$Month = 7, 1,
 ## Create the data for Delta and Omicron variant
 ## log transformation or median regression
 
+# Sensitivity analysis
+## regression with PS 
+## IPW
+## Standardization
 
 
 

@@ -12,54 +12,100 @@ knitr::opts_chunk$set(echo = TRUE)
 # Install package
 ```{r}
 install.packages("readxl")
+install.packages("geepack")
 ```
 
 # Import Dataset
 ```{r}
 library("readxl")
+library(geepack)
+library(boot)
 nhefs <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
 nhefs.nmv <- nhefs[which(!is.na(nhefs$wt82)),] 
-summary(nhefs)
+summary(nhefs.nmv$wt82)
 ```
 
+# Part 1
 ```{r}
-# Create a 2*2 cross table of sex and race for qsmk=0
-nhefs_qsmk0 <- subset(nhefs, qsmk==0)
-cross_table_qsmk0 <- table(nhefs_qsmk0$race, nhefs_qsmk0$qsmk)
-row_proportions0 <- prop.table(cross_table_qsmk0, 1)
-print(row_proportions0)
+# eistimation of ip weights with a logistic model
+## nonstabilized ip weights
+fit.pd <- glm(qsmk ~ sex + race + age + I(age^2), family=binomial('logit'), data=nhefs.nmv)
+summary(fit.pd)
+nhefs.nmv$pd.qsmk <- predict(fit.pd, nhefs.nmv, type="response")
 
-# Create a 2*2 cross table of sex and race for qsmk=1
-nhefs_qsmk1 <- subset(nhefs, qsmk==1)
-cross_table_qsmk1 <- table(nhefs_qsmk0$race, nhefs_qsmk0$qsmk)
-row_proportions1 <- prop.table(cross_table_qsmk1, 1)
-print(row_proportions1)
+nhefs.nmv$w_ns <- ifelse(nhefs.nmv$qsmk ==1, 1/nhefs.nmv$pd.qsmk, 1/(1-nhefs.nmv$pd.qsmk))
+summary(nhefs.nmv$w_ns)
 
+est_ya0_ns <- weighted.mean(nhefs.nmv$wt82_71[nhefs.nmv$qsmk==0], w=nhefs.nmv$w_ns[nhefs.nmv$qsmk==0])
+est_ya1_ns <- weighted.mean(nhefs.nmv$wt82_71[nhefs.nmv$qsmk==1], w=nhefs.nmv$w_ns[nhefs.nmv$qsmk==1])
+est_ya1_ns - est_ya0_ns
 
-nhefs.nmv$w <- ifelse(nhefs.nmv$sex==0,
-                      ifelse(nhefs.nmv$race==0,
-                             ifelse(nhefs.nmv$qsmk==1, 1/0.8629893, 1/(1-0.8629893)),
-                             ifelse(nhefs.nmv$qsmk==1,)))
-  
-  0.40383+0.4487+0.0641+0.0832
-  
-  
-  
-  
-nhefs.nmv$w <- ifelse(nhefs.nmv$age50==1, 
-                      ifelse(nhefs.nmv$qsmk==1, 1/0.3333, 1/(1-0.3333)),
-                      ifelse(nhefs.nmv$qsmk==1, 1/0.2250, 1/(1-0.2250)))
+## stabilized ip weights
+fit.pn <- glm(qsmk ~ 1, family=binomial(), data=nhefs.nmv)
+summary(fit.pn)
+nhefs.nmv$pn.qsmk <- predict(fit.pn, nhefs.nmv, type="response")
+summary(nhefs.nmv$pn.qsmk)
+prop.table(table(nhefs.nmv$qsmk))
 
-mean(nhefs$death[nhefs$sex==0&nhefs$race==0 & nhefs$qsmk==0])
-mean(nhefs$death[nhefs$sex==0&nhefs$race==0 & nhefs$qsmk==1])
-mean(nhefs$death[nhefs$sex==0&nhefs$race==1 & nhefs$qsmk==0])
-mean(nhefs$death[nhefs$sex==0&nhefs$race==1 & nhefs$qsmk==1])
-mean(nhefs$death[nhefs$sex==1&nhefs$race==0 & nhefs$qsmk==0])
-mean(nhefs$death[nhefs$sex==1&nhefs$race==0 & nhefs$qsmk==1])
-mean(nhefs$death[nhefs$sex==1&nhefs$race==1 & nhefs$qsmk==0])
-mean(nhefs$death[nhefs$sex==1&nhefs$race==1 & nhefs$qsmk==1])
+nhefs.nmv$w_s <- ifelse(nhefs.nmv$qsmk==1, nhefs.nmv$pn.qsmk/nhefs.nmv$pd.qsmk,
+                        (1-nhefs.nmv$pn.qsmk)/(1-nhefs.nmv$pd.qsmk))
+summary(nhefs.nmv$w_s)
+
+est_ya0_s <- weighted.mean(nhefs.nmv$wt82_71[nhefs.nmv$qsmk==0], w=nhefs.nmv$w_s[nhefs.nmv$qsmk==0])
+est_ya1_s <- weighted.mean(nhefs.nmv$wt82_71[nhefs.nmv$qsmk==1], w=nhefs.nmv$w_s[nhefs.nmv$qsmk==1])
+est_ya1_s - est_ya0_s
+
+# saturated marginal structural model, nonstabilized weights
+msm.w <- geeglm(wt82_71 ~ qsmk, data=nhefs.nmv, weights=w_ns, id=seqn,
+                corstr="independence")
+summary(msm.w)
+
+beta <- coef(msm.w)
+SE <- coef(summary(msm.w))[,2]
+lcl <- beta-qnorm(0.975)*SE 
+ucl <- beta+qnorm(0.975)*SE
+cbind(beta, lcl, ucl)
+
+# saturated marginal structural model, stabilized weights
+msm.sw <- geeglm(wt82_71 ~ qsmk, data=nhefs.nmv, weights=w_s, id=seqn,
+                corstr="independence")
+summary(msm.sw)
+
+beta <- coef(msm.sw)
+SE <- coef(summary(msm.sw))[,2]
+lcl <- beta-qnorm(0.975)*SE 
+ucl <- beta+qnorm(0.975)*SE
+cbind(beta, lcl, ucl)
 
 ```
 
+# Part 2
+```{r}
+# "check" for positivity
+## Question 10
+table(nhefs.nmv$age[nhefs.nmv$race == 0 & nhefs.nmv$sex == 0], 
+      nhefs.nmv$qsmk[nhefs.nmv$race == 0 & nhefs.nmv$sex == 0])
 
+## Question 11
+table(nhefs.nmv$age[nhefs.nmv$race == 0 & nhefs.nmv$sex == 1], 
+      nhefs.nmv$qsmk[nhefs.nmv$race == 0 & nhefs.nmv$sex == 1])
+
+```
+
+# Part3
+```{r}
+# Risk difference
+est_ya0_ns_p3 <- weighted.mean(nhefs.nmv$death[nhefs.nmv$qsmk==0], w=nhefs.nmv$w_ns[nhefs.nmv$qsmk==0])
+est_ya1_ns_p3 <- weighted.mean(nhefs.nmv$death[nhefs.nmv$qsmk==1], w=nhefs.nmv$w_ns[nhefs.nmv$qsmk==1])
+est_ya1_ns_p3 - est_ya0_ns_p3
+est_ya1_ns_p3/est_ya0_ns_p3 # Risk ratio
+
+#OR
+q3.msm.or_s <- glm(death ~ qsmk, data=nhefs.nmv, weights =w_s, family=quasibinomial(link='logit'))
+summary(q3.msm.or_s)
+exp(coef(q3.msm.or_s))
+
+#Q16 95% confidence interval for the causal odds ratio
+exp(confint(q3.msm.or_s))
+```
 
