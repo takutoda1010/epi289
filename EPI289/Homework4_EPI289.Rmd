@@ -1,0 +1,227 @@
+---
+title: "Homework4_EPI289"
+author: "Takuto Yoshida"
+date: "2023-02-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install package
+```{r}
+if (!require(readxl)) {install.packages("readxl")}
+if (!require(geepack)) {install.packages("geepack")}
+if (!require(sandwich)) {install.packages("sandwich")}
+```
+
+# Import Dataset
+```{r}
+library("readxl")
+library(geepack)
+library(boot)
+library(sandwich)
+nhefs <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
+summary(nhefs)
+```
+
+#Question2
+```{r}
+# eistimation of ip weights with a logistic model
+## nonstabilized ip weights
+## Estimate of the denominator of treatment weights
+fit.pd <- glm(qsmk ~ sex + race + age + smokeintensity + asthma + as.factor(education) + as.factor(active), family=binomial('logit'), data=nhefs) 
+summary(fit.pd)
+nhefs$pd.qsmk <- predict(fit.pd, nhefs, type="response")
+
+## Estimator of the numerator of treatment weights  
+fit.pn <- glm(qsmk ~ 1, family=binomial(), data=nhefs)
+summary(fit.pn)
+nhefs$pn.qsmk <- predict(fit.pn, nhefs, type="response")
+summary(nhefs$pn.qsmk)
+prop.table(table(nhefs$qsmk))
+
+## Stabilized weights
+nhefs$w_s <- ifelse(nhefs$qsmk==1, nhefs$pn.qsmk/nhefs$pd.qsmk,
+                        (1-nhefs$pn.qsmk)/(1-nhefs$pd.qsmk))
+summary(nhefs$w_s)
+
+# Saturated marginal structural model, stabilized weights
+msm.sw <- glm(death ~ qsmk, data = nhefs, weights=w_s, family=binomial(link='logit'))
+
+beta <- coef(msm.sw)
+SE <- sqrt(diag(vcovHC(msm.sw, type="HC0")))
+lcl <- beta-1.96*SE 
+ucl <- beta+1.96*SE
+cbind(beta, lcl, ucl)
+summary(msm.sw)
+exp(coef(msm.sw)) # Odds Ratio
+exp(confint(msm.sw))
+exp(cbind(beta, lcl, ucl))
+
+## MSM with stabilized weights for risk ratio
+## Note: using a log link now; in the parametric case, must check that probabilities
+## are restricted between 0 and 1
+msm.sw.rr <- glm(death ~ qsmk, data=nhefs, weights = w_s, family=binomial(link='log'))
+summary(msm.sw.rr)
+exp(coef(msm.sw.rr))
+
+## Risk Difference
+est_ya0_s <- weighted.mean(nhefs$death[nhefs$qsmk==0], w=nhefs$w_s[nhefs$qsmk==0])
+est_ya1_s <- weighted.mean(nhefs$death[nhefs$qsmk==1], w=nhefs$w_s[nhefs$qsmk==1])
+(est_ya1_s - est_ya0_s)*100
+```
+
+# Question9
+```{r}
+ipw <- function(data, indices) {
+  d <- data[indices, ]
+  # estimating denominator of IP weights
+  ipw.denom <- glm(qsmk ~ sex + race + age + smokeintensity +
+                     asthma + as.factor(education) + as.factor(active), data=d, family=binomial())
+  d$predict_d <- predict(ipw.denom, d, type='response')
+  # estimating numerator of IP weights
+  ipw.num <- glm(qsmk ~ 1, data=d, family=binomial())
+  d$predict_n <- predict(ipw.num, d, type='response')
+  # calculating weights
+  d$sw <- ifelse(d$qsmk==1, d$predict_n/d$predict_d, (1-d$predict_n)/(1-d$predict_d))
+  # msm
+  msm <- geeglm(death ~ qsmk, data=d, weights=sw, id=seqn, corstr="independence", family = "binomial")
+  return(msm$coefficients[2])
+}
+
+# bootstrap
+set.seed(1)
+results <- boot(data=nhefs, statistic=ipw, R=100)
+
+# generating confidence intervals
+se <- sd(results$t)
+mean <- results$t0
+ll <- mean - qnorm(0.975)*se
+ul <- mean + qnorm(0.975)*se
+exp(c(mean, ll, ul))
+
+```
+
+# Question 12
+```{r}
+nhefs$cens <- ifelse(is.na(nhefs$wt82), 1, 0)
+table(nhefs$cens)
+prop.table(table(nhefs$cens))
+
+## Estimate of the denominator of treatment weights
+denom.tx <- glm(qsmk ~ sex + race + age + wt71, family=binomial('logit'), data=nhefs) 
+summary(denom.tx)
+nhefs$pd.qsmk <- predict(denom.tx, nhefs, type="response")
+
+## Estimator of the numerator of treatment weights  
+numer.tx <- glm(qsmk ~ 1, family=binomial(), data=nhefs)
+summary(numer.tx)
+nhefs$pn.qsmk <- predict(numer.tx, nhefs, type="response")
+
+# estimation of denominator of censoring weights
+denom.cens <- glm(cens ~ qsmk + sex + race + age + weakheart, 
+                  family = binomial(), data = nhefs)
+summary(denom.cens)
+
+pd.cens <- 1-predict(denom.cens, type = "response")
+
+# estimation of numerator of censoring weights
+numer.cens <- glm(cens~qsmk, family = binomial(), data = nhefs)
+summary(numer.cens)
+nhefs$pn.cens <- 1-predict(numer.cens, type = "response")
+
+nhefs$sw.a <- ifelse(nhefs$qsmk == 0, ((1-nhefs$pn.qsmk)/(1-nhefs$pd.qsmk)),
+                     (nhefs$pn.qsmk/nhefs$pd.qsmk))
+nhefs$sw.c <- pn.cens/pd.cens
+nhefs$sw <- nhefs$sw.c*nhefs$sw.a
+
+summary(nhefs$sw.a)
+#sd(nhefs$sw.a)
+#summary(nhefs$sw.c)
+#sd(nhefs$sw.c)
+summary(nhefs$sw)
+#sd(nhefs$sw)
+
+msm.sw <- geeglm(wt82_71~qsmk, data=nhefs, 
+                 weights=sw, id=seqn, corstr="independence")
+summary(msm.sw)
+
+beta <- coef(msm.sw)
+SE <- coef(summary(msm.sw))[,2]
+lcl <- beta-qnorm(0.975)*SE 
+ucl <- beta+qnorm(0.975)*SE
+cbind(beta, lcl, ucl)
+```
+
+# Question 15
+```{r}
+##################################################################
+# Standardization by multiple confounders using an outcome model #
+##################################################################
+  
+# create a dataset with 3 copies of each subject
+nhefs$interv <- -1 # 1st copy: equal to original one
+
+interv0 <- nhefs # 2nd copy: treatment set to 0, outcome to missing
+interv0$interv <- 0
+interv0$qsmk <- 0
+interv0$wt82_71 <- NA
+
+interv1 <- nhefs # 3rd copy: treatment set to 1, outcome to missing
+interv1$interv <- 1
+interv1$qsmk <- 1
+interv1$wt82_71 <- NA
+
+onesample <- rbind(nhefs, interv0, interv1) # combining datasets
+
+# linear model to estimate mean outcome conditional on treatment and confounders
+# parameters are estimated using original observations only (nhefs)
+# parameter estimates are used to predict mean outcome for observations with 
+# treatment set to 0 (interv=0) and to 1 (interv=1)
+
+std <- glm(wt82_71 ~ qsmk + sex + race + age + wt71 + weakheart, 
+           data=onesample)
+summary(std)   
+onesample$predicted_meanY <- predict(std, onesample)
+
+# estimate mean outcome in each of the groups interv=0, and interv=1
+# this mean outcome is a weighted average of the mean outcomes in each combination 
+# of values of treatment and confounders, that is, the standardized outcome
+mean(onesample[which(onesample$interv==0),]$predicted_meanY)
+mean(onesample[which(onesample$interv==1),]$predicted_meanY)
+
+mean(onesample[which(onesample$interv==1),]$predicted_meanY)-mean(onesample[which(onesample$interv==0),]$predicted_meanY)
+```
+
+```{r}
+nrow(onesample)
+nrow(nhefs)
+nrow(nhefs)*3
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

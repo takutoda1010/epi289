@@ -1,0 +1,172 @@
+---
+title: "Homework3_BST223"
+author: "Takuto Yoshida"
+date: "2023-02-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Installing package
+```{r}
+if (!require(survival)) {install.packages("survival")}
+if (!require(ggplot2)) {install.packages("ggplot2")}
+if (!require(table1)) {install.packages("table1")}
+library(ggplot2)
+library(table1)
+
+pacman::p_load(
+  rio,          # file import
+  here,         # locate file
+  skimr,        # Summarized data
+  tidyverse,    # Data management and ggplot2 drawing
+  gtsummary,    # Summary Statistics and Tests
+  rstatix,      # Summary Statistics and Statistical Tests
+  janitor,      # Add totals and percentages to tables
+  scales,       # Convert to percentages
+  flextable,    # Convert tables to clean images
+  zoo)          # Data import and export)
+```
+
+
+# Inporting Dataset
+```{r}
+bm <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework3/BoneMarrow.csv")
+summary(bm)
+```
+
+# Question (b)
+```{r}
+# KM Curve
+## Fit the model
+fit.km.plain <- survfit(Surv(time, status==1)~hosp, data=bm, conf.type = "plain")
+summary(fit.km.plain)
+
+## Plot the Curve
+plot(fit.km.plain, main = "Kaplan-Meier Estimate of the Hospital-specific Survivor Function",
+     xlab="Time", ylab="S(t)", col=c("#00a0e9", "#e4007f", "#009944", "#f39800"), mark.time = TRUE)
+legend("topright", fill = c("#00a0e9", "#e4007f", "#009944", "#f39800"), legend = c("The Ohio State University", "Alferd", "St.Vincent", "Hahnemann"), lty=1)
+
+
+plot(fit.km.plain, main = "Kaplan-Meier Estimate of the Hospital-specific Survivor Function",
+     xlab="Time (years)", ylab="Survival Probability", col=c("#00a0e9", "#e4007f", "#009944", "#f39800"), mark.time = TRUE, axes = FALSE)
+axis(side = 1)
+axis(side = 2)
+legend("top", fill = c("#00a0e9", "#e4007f", "#009944", "#f39800"), legend = c("The Ohio State University", "Alferd", "St.Vincent", "Hahnemann"), lty=1, border=NA, ncol=4, cex=0.8, xjust=0.5, yjust=1.1)
+
+
+
+####################
+## Motohiko's Code
+####################
+
+fit.km <- survfit(Surv(time, status==1)~hosp, data=dat)
+summary(fit.km.plain)
+
+## Plot the survival function
+library(survminer)
+fit <- list(OS = fit.km.plain)
+ggsurvplot_combine(fit, bm)
+
+```
+# Question (c)
+```{r}
+# log-rank test
+log_rank <- survdiff(Surv(time, status)~hosp, data=bm, rho=0)
+log_rank
+```
+
+# Question (d)
+```{r}
+# Create the new variables
+## Age category; <=20:1, 21-30:2, 31-40:3, 41-:4
+bm$age_cat <- ifelse(bm$ageP <= 20, "≦20", 
+                  ifelse(bm$ageP >=21 & bm$ageP <=30, "21-30", 
+                         ifelse(bm$ageP>=31 & bm$ageP <=40, "31-40", "41-")))
+bm$age_cat <- as.factor(bm$age_cat)
+
+## Recreate wait categori, "weit_cat"
+bm$wait_cat <- ifelse(bm$waittime <= 90, "≦90",
+                     ifelse(bm$waittime >= 91 & bm$waittime <= 180, "91-180", 
+                            ifelse(bm$waittime >= 181 & bm$waittime <= 365, "181-365", ">365")))
+bm$wait_cat <- as.factor(bm$wait_cat)
+print(bm$wait_cat)
+
+bm$wait_cat <- factor(bm$wait_cat, levels = c("≦90", "91-180", "181-365", ">365"))
+print(bm$wait_cat)
+
+
+# Create Table1
+bm %>% 
+  select(age_cat, wait_cat, group, hosp) %>% 
+  tbl_summary(     
+    by = hosp,
+    statistic = all_categorical() ~ "{n} / {N} ({p}%)",   
+    type   = all_categorical() ~ "categorical",                 
+    label  = list(                                              
+      hosp   ~ "Hospital",
+      age_cat ~ "Age(years)",
+      wait_cat ~ "Wait time(days)",
+      group ~ "Disease Group(; 1/2/3 = ALL/AML low risk/AML high risk)",
+      missing_text = "Missing"
+  ))
+
+# Alternative way to create table1
+label(bm$wait_cat) <- "Wati Time"
+label(bm$age_cat) <- "Age"
+label(bm$group) <- "Disease Group"
+bm$hosp <- factor(bm$hosp, labels = c("The Ohio State University", "Alferd", "St.Vincent", "Hahnemann"))
+
+tab1 <- table1(~wait_cat+age_cat+group|hosp, data=bm, overall = c(right="Overall"))
+tab1
+```
+
+# Question (e)
+```{r}
+# Age stratified log-rank test
+age.log_rank <- survdiff(Surv(time, status) ~ hosp + strata(age_cat), data=bm, rho=0)
+age.log_rank
+
+# Wait time stratified log-rank test
+wait.log_rank <- survdiff(Surv(time, status) ~ hosp + strata(wait_cat), data=bm, rho=0)
+wait.log_rank
+
+# Disease group stratified log-rank test
+disease.log_rank <- survdiff(Surv(time, status) ~ hosp + strata(group), data=bm, rho=0)
+disease.log_rank
+
+```
+
+# Question (f)
+```{r}
+final.log_rank <- survdiff(Surv(time, status) ~ hosp + strata(age_cat) + strata(wait_cat) + strata(group), data=bm, rho=0)
+final.log_rank
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

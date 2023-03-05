@@ -1,0 +1,805 @@
+---
+title: "covid_surge"
+author: "Takuto Yoshida"
+date: "2023-02-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install package
+```{r}
+if (!require(readxl)) {install.packages("readxl")}
+if (!require(ggplot2)) {install.packages("ggplot2")}
+if (!require(dplyr)) {install.packages("dplyr")}
+if (!require(car)) {install.packages("car")}
+if (!require(car)) {install.packages("tidyr")}
+if (!require(car)) {install.packages("stringi")}
+if (!require(lubridate)) {install.packages("lubridate")}
+if (!require(mice)) {install.packages("mice")}
+library(lubridate)
+
+pacman::p_load(
+  rio,          # file import
+  here,         # locate file
+  skimr,        # Summarized data
+  tidyverse,    # Data management and ggplot2 drawing
+  gtsummary,    # Summary Statistics and Tests
+  rstatix,      # Summary Statistics and Statistical Tests
+  janitor,      # Add totals and percentages to tables
+  scales,       # Convert to percentages
+  flextable,     # Convert tables to clean images
+  lubridate,  # 日付の扱いと変換のための一般的なパッケージ  
+  parsedate,  # 厄介な日付を「推測」する関数を持つ
+  aweek,      # 日付を週に、週を日付に変換する別のオプション
+  zoo,        # 日付と時間に関する追加の関数
+  tidyverse,  # データマネジメントと可視化  
+  rio)        # データのインポートとエクスポート)
+```
+
+# Create the dataset
+```{r}
+covsurge <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/EPI 946/Dataset/nsqip_op.csv")
+names(covsurge)
+```
+
+## Operation Day
+```{r}
+# Separate Operation.Date into Year, Month, and Day
+class(covsurge$Operation.Date)
+covsurge <- covsurge %>%
+  mutate(opedate = as.Date(Operation.Date, format ="%m/%d/%Y"))
+class(covsurge$opedate)
+
+# Extract data after March 1, 2020.
+covsurge <- covsurge %>%
+  filter(opedate >= as.Date("2020-03-01"))
+```
+
+# COVID Surge
+```{r}
+# Define a date range during the surge period
+## December11, 2020 - March1, 2021
+## December27, 2021 - January31, 2022
+surge_start_dates <- c("2020-12-11", "2021-12-27")
+surge_end_dates <- c("2021-03-01", "2022-01-31")
+
+# Assign 1 to the data corresponding to the surge period 
+covsurge$surge <- 0
+for (i in 1:length(surge_start_dates)) {
+  covsurge$surge[covsurge$opedate >= as.Date(surge_start_dates[i]) & 
+                  covsurge$opedate <= as.Date(surge_end_dates[i])] <- 1
+}
+
+# Check for correct assignment
+# subset(covsurge, surge == 0 ) $opedate
+# subset(covsurge, surge == 1 ) $opedate
+```
+
+## Age
+```{r}
+# countinuous
+covsurge$age <- covsurge$Age.at.Time.of.Surgery
+
+# Age category
+covsurge$age_cat <- ifelse(covsurge$age < 40, 1, 
+                           ifelse(covsurge$age <=50, 2,
+                                  ifelse(covsurge$age <= 60, 3, 
+                                         ifelse(covsurge$age <= 70, 4, 5))))
+summary(covsurge$age)
+table(covsurge$age_cat)
+sum(is.na(covsurge$age)) # No missing value
+```
+
+## Sex
+```{r}
+covsurge$sex <- ifelse(covsurge$Sex == "Male", 1, 0) # Female:0, Male:1
+covsurge$sex <- as.factor(covsurge$sex)
+table(covsurge$sex)
+sum(is.na(covsurge$sex)) # No missing value
+```
+
+## Race
+```{r}
+table(covsurge$Race)
+covsurge$Race[covsurge$Race ==""] <- NA
+
+# Race=0: Black or African American, Race=1: White, Race=2: Others
+covsurge$race <- ifelse(covsurge$Race=="Black or African American", 0,
+                        ifelse(covsurge$Race=="White", 1,2))
+
+covsurge$race <- as.factor(covsurge$race)
+sum(is.na(covsurge$race))
+table(covsurge$race, useNA="always")  # 24 missing values
+```
+
+## BMI
+```{r}
+covsurge$bmi <- ifelse(covsurge$BMI < 18.5, 0,  # BMI<18.5: 0
+                           ifelse(covsurge$BMI <25, 1, # BMI 18.5-25: 1
+                                  ifelse(covsurge$BMI < 30, 2, # BMI 25-30: 2
+                                         ifelse(covsurge$BMI >= 30, 3, NA)))) # BMI 30-: 3, missing value: NA 
+table(covsurge$bmi, useNA="always")
+sum(is.na(covsurge$bmi))  
+covsurge$bmi <- as.factor(covsurge$bmi) # 47 missing value
+```
+
+## Functional Status
+```{r}
+table(covsurge$Functional.Heath.Status)
+covsurge$Functional.Heath.Status[covsurge$Functional.Heath.Status ==""] <- NA
+
+# func=0: Independent, func=1: Partially Dependent, func=2: Tottally Dependent, func=3: Unknown
+covsurge$func <- ifelse(covsurge$Functional.Heath.Status=="Independent", 0,
+                        ifelse(covsurge$Functional.Heath.Status=="Partially Dependent", 1, 
+                        ifelse(covsurge$Functional.Heath.Status=="Totally Dependent", 2,
+                        ifelse(covsurge$Functional.Heath.Status=="Unknown",3,NA))))
+
+sum(is.na(covsurge$Functional.Heath.Status))
+table(covsurge$func, useNA="always") 
+covsurge$func <- as.factor(covsurge$func) # two missing value
+```
+
+## Emergency
+```{r}
+table(covsurge$Emergency.Case)
+
+# emergency=0: Elective surgery, emergency=1: Emergency surgery
+covsurge$emergency <- ifelse(covsurge$Emergency.Case=="No", 0,
+                             ifelse(covsurge$Emergency.Case=="Yes", 1, NA))
+sum(is.na(covsurge$emergency))
+table(covsurge$emergency, useNA="always")
+covsurge$emergency <- as.factor(covsurge$emergency) # 5612 missing value
+```
+More than 50% are missing values, so they are not incorporated into the final model. This will be added to Limitation.
+
+## ASA-PS
+```{r}
+table(covsurge$ASA.Classification)
+
+# ASA-PS category
+covsurge$asa <- ifelse(covsurge$ASA.Classification=="ASA 1 - No Disturb", 1,
+                             ifelse(covsurge$ASA.Classification=="ASA 2 - Mild Disturb", 2,
+                                    ifelse(covsurge$ASA.Classification=="ASA 3 - Severe Disturb", 3,
+                                           ifelse(covsurge$ASA.Classification=="ASA 4 - Life Threat", 4,
+                                                  ifelse(covsurge$ASA.Classification=="ASA 5 - Moribund", 5, NA)))))
+sum(is.na(covsurge$asa))
+table(covsurge$asa, useNA="always") 
+covsurge$asa <- as.factor(covsurge$asa) # 37 missing values
+```
+
+## DM
+```{r}
+table(covsurge$Diabetes.Mellitus)
+
+# DM category: 0=No, 1=Non-Insulin, 2=Insulin
+covsurge$dm <- ifelse(covsurge$Diabetes.Mellitus=="No", 0,
+                             ifelse(covsurge$Diabetes.Mellitus=="Non-Insulin", 1,
+                                    ifelse(covsurge$Diabetes.Mellitus=="Insulin", 2, NA)))
+sum(is.na(covsurge$dm))
+table(covsurge$dm, useNA="always") 
+covsurge$dm <- as.factor(covsurge$dm) # 2 missing values
+```
+
+## HTN
+```{r}
+table(covsurge$Hypertension.requiring.medication)
+
+# HTN category: 0=No, 1=Yes
+covsurge$htn <- ifelse(covsurge$Hypertension.requiring.medication=="No", 0,
+                             ifelse(covsurge$Hypertension.requiring.medication=="Yes", 1, NA))
+sum(is.na(covsurge$htn))
+table(covsurge$htn, useNA="always") 
+covsurge$htn <- as.factor(covsurge$htn) # 2 missing values
+covsurge$htn <- as.factor(covsurge$htn)
+```
+
+## Immunosuppressive Therapy
+```{r}
+table(covsurge$Immunosuppressive.Therapy)
+
+# Immunosuppressive category: 0=No, 1=Yes
+covsurge$imsp <- ifelse(covsurge$Immunosuppressive.Therapy=="No", 0,
+                             ifelse(covsurge$Immunosuppressive.Therapy=="Yes", 1, NA))
+sum(is.na(covsurge$imsp))
+table(covsurge$imsp, useNA="always") 
+covsurge$imsp <- as.factor(covsurge$imsp) # 2 missing values
+```
+
+## Ascites
+```{r}
+table(covsurge$Ascites)
+
+# Ascites category: 0=No, 1=Yes
+covsurge$ascites <- ifelse(covsurge$Ascites=="No", 0,
+                             ifelse(covsurge$Ascites=="Yes", 1, NA))
+sum(is.na(covsurge$ascites))
+table(covsurge$ascites, useNA="always") 
+covsurge$ascites <- as.factor(covsurge$ascites) # 2 missing values
+```
+
+## Systemic sepsis within 48 h before surgery 
+```{r}
+table(covsurge$Sepsis..SIRS.Sepsis.Septic.shock...48h.)
+
+# Sepsis category: 0=None, 1=Sepsis, 2=Septic shock, 3=SIRS
+covsurge$sepsis <- ifelse(covsurge$Sepsis..SIRS.Sepsis.Septic.shock...48h.=="None", 0,
+                             ifelse(covsurge$Sepsis..SIRS.Sepsis.Septic.shock...48h.=="Sepsis", 1,
+                                    ifelse(covsurge$Sepsis..SIRS.Sepsis.Septic.shock...48h.=="Septic shock", 3,
+                                           ifelse(covsurge$Sepsis..SIRS.Sepsis.Septic.shock...48h.=="SIRS", 4, NA))))
+sum(is.na(covsurge$sepsis))
+table(covsurge$sepsis, useNA="always") 
+covsurge$sepsis <- as.factor(covsurge$sepsis) # 2 missing values
+```
+
+## Ventilator dependency
+```{r}
+table(covsurge$Ventilator.Dependent)
+
+# Ventilator dependency category: 0=No, 1=Yes
+covsurge$venti <- ifelse(covsurge$Ventilator.Dependent=="No", 0,
+                             ifelse(covsurge$Ventilator.Dependent=="Yes", 1, NA))
+sum(is.na(covsurge$venti))
+table(covsurge$venti, useNA="always") 
+covsurge$venti <- as.factor(covsurge$venti) # 2 missing values
+```
+
+## Disseminated cancer
+```{r}
+table(covsurge$Disseminated.Cancer)
+
+# Disseminated.Cancer category: 0=No, 1=Yes
+covsurge$cancer <- ifelse(covsurge$Disseminated.Cancer=="No", 0,
+                             ifelse(covsurge$Disseminated.Cancer=="Yes", 1, NA))
+sum(is.na(covsurge$cancer))
+table(covsurge$cancer, useNA="always") 
+covsurge$cancer <- as.factor(covsurge$cancer) #2 missing values
+```
+
+## Congestive heart failure
+```{r}
+table(covsurge$Heart.Failure)
+
+# Heart failure category: 0=No, 1=Yes
+covsurge$chf <- ifelse(covsurge$Heart.Failure=="No", 0,
+                             ifelse(covsurge$Heart.Failure=="Yes", 1, NA))
+sum(is.na(covsurge$chf))
+table(covsurge$chf, useNA="always") #2 missing values
+covsurge$chf <- as.factor(covsurge$chf)
+```
+
+## Dyspnea
+```{r}
+table(covsurge$Dyspnea)
+
+# Dyspnea category: 0=No, 1=Moderate Exertion, 2=AtRest
+covsurge$dyspnea <- ifelse(covsurge$Dyspnea=="No", 0,
+                             ifelse(covsurge$Dyspnea=="Moderate Exertion", 1,
+                                    ifelse(covsurge$Dyspnea=="AtRest", 2, NA)))
+covsurge$dyspnea[covsurge$dyspnea =="NA"] <- NA
+sum(is.na(covsurge$dyspnea))
+table(covsurge$dyspnea, useNA="always") 
+covsurge$dyspnea <- as.factor(covsurge$dyspnea) #5620 missing values
+```
+This is also missing in about half of the cases. However, since this one is not incorporated into the final model, no assignment of missing values is made.
+
+## Current smoker within 1y
+```{r}
+table(covsurge$Current.Smoker.within.1.year)
+
+# smoking category: 0=No, 1=Yes
+covsurge$smk <- ifelse(covsurge$Current.Smoker.within.1.year=="No", 0,
+                             ifelse(covsurge$Current.Smoker.within.1.year=="Yes", 1, NA))
+sum(is.na(covsurge$smk))
+table(covsurge$smk, useNA="always") #2 missing values
+covsurge$smk <- as.factor(covsurge$smk)
+```
+
+## COPD
+```{r}
+table(covsurge$History.of.Severe.COPD)
+
+# COPD category: 0=No, 1=Yes
+covsurge$copd <- ifelse(covsurge$History.of.Severe.COPD=="No", 0,
+                             ifelse(covsurge$History.of.Severe.COPD=="Yes", 1, NA))
+sum(is.na(covsurge$copd))
+table(covsurge$copd, useNA="always") #2 missing values
+covsurge$copd <- as.factor(covsurge$copd)
+```
+
+## Dialysis
+```{r}
+table(covsurge$Preop.Dialysis)
+
+# Dialysis category: 0=No, 1=Yes
+covsurge$dialysis <- ifelse(covsurge$Preop.Dialysis=="No", 0,
+                             ifelse(covsurge$Preop.Dialysis=="Yes", 1, NA))
+sum(is.na(covsurge$dialysis))
+table(covsurge$dialysis, useNA="always") #2 missing values
+covsurge$dialysis <- as.factor(covsurge$dialysis)
+```
+
+## Acute renal failure 
+```{r}
+table(covsurge$Preop.Acute.Kidney.Injury)
+
+# AKI category: 0=No, 1=Yes
+covsurge$aki <- ifelse(covsurge$Preop.Acute.Kidney.Injury=="No", 0,
+                             ifelse(covsurge$Preop.Acute.Kidney.Injury=="Yes", 1, NA))
+sum(is.na(covsurge$aki))
+table(covsurge$aki, useNA="always") #2 missing values
+covsurge$aki <- as.factor(covsurge$aki)
+```
+
+## COVID-19 infection at the time of surgery
+```{r}
+table(covsurge$Preop.COVID.19.Diagnosis)
+
+# Preop covid category: 0=No, 1=Yes, lab-confirmed diagnosis (or ICD-10 code U07.1), 2=Yes, suspected diagnosis (or ICD-10 code U07.2)
+covsurge$covid <- ifelse(covsurge$Preop.COVID.19.Diagnosis=="No", 0,
+                             ifelse(covsurge$Preop.COVID.19.Diagnosis=="Yes, lab-confirmed diagnosis (or ICD-10 code U07.1)", 1,
+                                    ifelse(covsurge$Preop.COVID.19.Diagnosis=="Yes, suspected diagnosis (or ICD-10 code U07.2)", 2, NA)))
+
+covsurge$covid[covsurge$covid ==""] <- NA
+sum(is.na(covsurge$covid))
+table(covsurge$covid, useNA="always") 
+covsurge$covid <- as.factor(covsurge$covid) # 3 missing values
+```
+
+## COVID-19 Vaccination
+```{r}
+
+```
+
+
+# Operation
+## Type of surgery
+```{r}
+table(covsurge$Surgical.Specialty)
+
+# Type of surgery category: 0=General Surgery, 1=Neurosurgery, 2=Otolaryngology (ENT), 3=Plastics, 4=Thoracic, 5=Urology, 6=Vascular
+covsurge$surg_type <- ifelse(covsurge$Surgical.Specialty=="General Surgery", 0,
+                             ifelse(covsurge$Surgical.Specialty=="Neurosurgery", 1,
+                                    ifelse(covsurge$Surgical.Specialty=="Otolaryngology (ENT)", 2,
+                                           ifelse(covsurge$Surgical.Specialty=="Plastics", 3,
+                                                 ifelse(covsurge$Surgical.Specialty=="Thoracic", 4,
+                                                        ifelse(covsurge$Surgical.Specialty=="Urology", 5,
+                                                               ifelse(covsurge$Surgical.Specialty=="Vascular", 6,NA)))))))
+
+sum(is.na(covsurge$surg_type))
+table(covsurge$surg_type, useNA="always") # no missing values
+covsurge$surg_type <- as.factor(covsurge$surg_type)
+```
+
+## Type of Anesthesia 
+```{r}
+table(covsurge$Principal.Anesthesia.Technique)
+
+# Type of surgery category: 0=No, 1=Yes, lab-confirmed diagnosis (or ICD-10 code U07.1), 2=Yes, suspected diagnosis (or ICD-10 code U07.2)
+covsurge$anes <- ifelse(covsurge$Principal.Anesthesia.Technique=="Regional", 0,
+                             ifelse(covsurge$Principal.Anesthesia.Technique=="General", 1,
+                                    ifelse(covsurge$Principal.Anesthesia.Technique=="Epidural", 2,
+                                           ifelse(covsurge$Principal.Anesthesia.Technique=="Spinal", 3,
+                                                 ifelse(covsurge$Principal.Anesthesia.Technique=="Monitored Anesthesia Care/IV Sedation", 4,NA)))))
+
+sum(is.na(covsurge$anes))
+table(covsurge$anes, useNA="always") # no missing values
+covsurge$anes <- as.factor(covsurge$anes)
+```
+
+## Surgery duration
+```{r}
+covsurge$opetime <- covsurge$Duration.of.Surgical.Procedure..in.minutes.
+sum(is.na(covsurge$opetime))
+```
+
+## Transfusion
+```{r}
+table(covsurge$Total.Blood.Transfused..in.units.)
+covsurge$transfusion <- ifelse(is.na(covsurge$Total.Blood.Transfused..in.units.), 0, covsurge$Total.Blood.Transfused..in.units.)
+summary(covsurge$transfusion)
+sum(is.na(covsurge$transfusion))
+```
+
+## Conversion rate
+```{r}
+table(covsurge$Unplanned.Conversion.to.Open)
+
+# Conversion category: 0=No, 1=Yes
+covsurge$conversion <- ifelse(covsurge$Unplanned.Conversion.to.Open=="No", 0,
+                             ifelse(covsurge$Unplanned.Conversion.to.Open=="Yes", 1, NA))
+covsurge$conversion[covsurge$coversion ==""] <- NA
+sum(is.na(covsurge$conversion))
+table(covsurge$conversion, useNA="always") 
+covsurge$conversion <- as.factor(covsurge$conversion) # 3682 missing values
+```
+
+## Reoperation
+```{r}
+table(covsurge$First.Unplanned.return.to.OR)
+
+# Conversion category: 0=No, 1=Yes
+covsurge$reop <- ifelse(covsurge$First.Unplanned.return.to.OR=="No", 0,
+                             ifelse(covsurge$First.Unplanned.return.to.OR=="Yes", 1, NA))
+
+covsurge$reop[covsurge$coversion ==""] <- NA
+sum(is.na(covsurge$reop))
+table(covsurge$reop, useNA="always") # 2 missing values
+covsurge$reop <- as.factor(covsurge$reop)
+```
+
+## Blood loss
+```{r}
+
+```
+
+
+# Complication
+## Thrombotic complication
+```{r}
+table(covsurge$X..of.Postop.Venous.Thrombosis.Requiring.Therapy)
+table(covsurge$X..of.Postop.Pulmonary.Embolism)
+
+# VTE complication category: 0=No, 1=Yes
+covsurge$postop_vte <- ifelse(covsurge$X..of.Postop.Venous.Thrombosis.Requiring.Therapy == 1 |covsurge$X..of.Postop.Pulmonary.Embolism == 1, 1, 0)
+
+table(covsurge$postop_vte)
+sum(is.na(covsurge$postop_vte))
+covsurge$postop_vte<- as.factor(covsurge$postop_vte)
+```
+
+## Hemorrhagic complications
+```{r}
+table(covsurge$X..of.Postop.Blood.Transfusions..72h.of.surgery.start.time.)
+
+# Hemorrhagic complication category: 0=No, 1=Yes
+covsurge$postop_hemo <- covsurge$X..of.Postop.Blood.Transfusions..72h.of.surgery.start.time.
+
+sum(is.na(covsurge$postop_hemo))
+covsurge$postop_hemo <- as.factor(covsurge$postop_hemo)
+```
+
+## Pulmonary complications
+```{r}
+table(covsurge$X..of.Postop.Pneumonia)
+table(covsurge$X..of.Postop.Pneumonia.PATOS)
+table(covsurge$X..of.Postop.Unplanned.Intubation)
+table(covsurge$X..of.Postop.Pulmonary.Embolism)
+table(covsurge$X..of.Postop.On.Ventilator...48.hours)
+table(covsurge$X..of.Postop.On.Ventilator...48.hours.PATOS)
+
+covsurge$postop_pulmo <- ifelse(covsurge$X..of.Postop.Pneumonia == 1 |covsurge$X..of.Postop.Pneumonia.PATOS == 1 |covsurge$X..of.Postop.Unplanned.Intubation >= 1 | covsurge$X..of.Postop.Pulmonary.Embolism == 1 | covsurge$X..of.Postop.On.Ventilator...48.hours >= 1 | covsurge$X..of.Postop.On.Ventilator...48.hours.PATOS == 1, 1, 0)
+
+table(covsurge$postop_pulmo)
+sum(is.na(covsurge$postop_pulmo))
+covsurge$postop_pulmo <- as.factor((covsurge$postop_pulmo))
+```
+
+## Cardiac complications
+```{r}
+table(covsurge$X..of.Cardiac.Arrest.Requiring.CPR)
+table(covsurge$X..of.Myocardial.Infarction)
+
+covsurge$postop_cardio <- ifelse(covsurge$X..of.Cardiac.Arrest.Requiring.CPR >= 1 |covsurge$X..of.Myocardial.Infarction == 1, 1, 0)
+
+table(covsurge$postop_cardio)
+sum(is.na(covsurge$postop_cardio))
+covsurge$postop_cardio <- as.factor(covsurge$postop_cardio)
+```
+
+## Neurological complications
+```{r}
+table(covsurge$X..of.Stroke.Cerebral.Vascular.Acccident..CVA.)
+covsurge$postop_neuro <- ifelse(covsurge$X..of.Stroke.Cerebral.Vascular.Acccident..CVA. == 1, 1, 0)
+table(covsurge$postop_neuro)
+sum(is.na(covsurge$postop_neuro))
+covsurge$postop_neuro <- as.factor(covsurge$postop_neuro)
+```
+
+## SSI complications
+```{r}
+table(covsurge$X..of.Postop.Superficial.Incisional.SSI)
+table(covsurge$X..of.Postop.Superficial.Incisional.SSI.PATOS)
+table(covsurge$X..of.Postop.Deep.Incisional.SSI)
+table(covsurge$X..of.Postop.Deep.Incisional.SSI.PATOS)
+table(covsurge$X..of.Postop.Organ.Space.SSI)
+table(covsurge$X..of.Postop.Organ.Space.SSI.PATOS)
+
+covsurge$ssi <- ifelse(covsurge$X..of.Postop.Superficial.Incisional.SSI >= 1 |covsurge$X..of.Postop.Superficial.Incisional.SSI.PATOS == 1 |covsurge$X..of.Postop.Deep.Incisional.SSI == 1 | covsurge$X..of.Postop.Deep.Incisional.SSI.PATOS == 1 | covsurge$X..of.Postop.Organ.Space.SSI >= 1 | covsurge$X..of.Postop.Organ.Space.SSI.PATOS == 1, 1, 0)
+
+table(covsurge$ssi)
+sum(is.na(covsurge$ssi))
+covsurge$ssi <- as.factor(covsurge$ssi)
+```
+
+## Hospital stay
+```{r}
+covsurge$los <- covsurge$Hospital.Length.of.Stay
+sum(is.na(covsurge$los))
+summary(covsurge$los)
+sum(is.na(covsurge$los)) # 117 missing values
+```
+
+## Death
+```{r}
+table(covsurge$Postop.Death.w.in.30.days.of.Procedure)
+
+# Death category: 0=No, 1=Yes
+covsurge$death <- ifelse(covsurge$Postop.Death.w.in.30.days.of.Procedure=="No", 0,
+                             ifelse(covsurge$Postop.Death.w.in.30.days.of.Procedure=="Yes", 1, NA))
+
+covsurge$death[covsurge$death ==""] <- NA
+sum(is.na(covsurge$death))
+table(covsurge$death, useNA="always") # 173 missing values
+covsurge$death <- as.factor(covsurge$death)
+sum(is.na(covsurge$death)) # 119 missing values
+
+```
+
+# Create new variables
+```{r}
+# Med staff vaccination (pre/post)
+covsurge$med_vac <- as.integer(covsurge$opedate >= as.Date("2020-12-14"))
+
+# COVID-19 variant
+## Delta
+covsurge$delta <- as.integer(covsurge$opedate >= as.Date("2021-04-01") & covsurge$opedate <= as.Date("2022-01-31"))
+## Omicron
+covsurge$omicron <-as.integer(covsurge$opedate >= as.Date("2022-02-01")) 
+```
+
+
+# Missing Value
+## func, dm, htn, imsp, ascites, sepsis, venti, cancer, chf, smk, copd, dialysis, aki, reop
+```{r}
+covsurge[is.na(covsurge$func), "IDN"]
+covsurge[is.na(covsurge$dm), "IDN"]
+covsurge[is.na(covsurge$htn), "IDN"]
+covsurge[is.na(covsurge$imsp), "IDN"]
+covsurge[is.na(covsurge$ascites), "IDN"]
+covsurge[is.na(covsurge$sepsis), "IDN"]
+covsurge[is.na(covsurge$venti), "IDN"]
+covsurge[is.na(covsurge$cancer), "IDN"]
+covsurge[is.na(covsurge$chf), "IDN"]
+covsurge[is.na(covsurge$smk), "IDN"]
+covsurge[is.na(covsurge$copd), "IDN"]
+covsurge[is.na(covsurge$dialysis), "IDN"]
+covsurge[is.na(covsurge$aki), "IDN"]
+covsurge[is.na(covsurge$reop), "IDN"]
+```
+All of these variables are missing in the same patient. Later, I remover these two patients.
+
+# covid
+```{r}
+covsurge[is.na(covsurge$covid), "IDN"]
+covsurge$covid[covsurge$covid == 2] <- 1
+covsurge$covid[is.na(covsurge$covid)] <- 0
+
+covsurge <- covsurge %>% filter(covid %in% c(0,1))
+summary(covsurge$covid)
+```
+
+
+## Multiple imputation
+```{r}
+# BMI (47 missing values)
+# ASA-PS (37 missing values)
+# Race (30 missing values)
+missing_vars <- c("bmi", "asa", "race")
+covsurge_missing <- covsurge[, c("IDN", missing_vars)]
+
+# Multiple imputation setup
+impute <- mice(covsurge_missing, m = 5, maxit = 50, seed = 123)
+
+# Retrieve assigned data
+covsurge_imputed <- complete(impute)
+
+# Combine with original data frame
+covsurge <- merge(covsurge, covsurge_imputed, by = "IDN")
+
+# check that the imputation is correct.
+sum(is.na(covsurge$bmi.y))
+sum(is.na(covsurge$asa.y))
+sum(is.na(covsurge$race.y))
+```
+
+
+# Creating Final Dataset
+```{r}
+# At first the Dataset has 9568 patients
+# Removing minor surgery patients
+covsurge <- covsurge %>% filter(!(anes %in% c(0, 4))) # Then 8692 patients (= 876 patients were removed)
+
+# Removing patients with multiple missing values
+covsurge <- covsurge[covsurge$IDN !=2657842 & covsurge$IDN != 1489469,] # 2 patients were removed.
+
+############## Finally this dataset has 8690 patients #################
+```
+
+
+### Main analysis ###
+
+# Table 1 (Patient Demographics)
+```{r}
+covsurge %>% 
+  select(age, age_cat, sex, bmi.y, race.y, func, emergency, asa.y, dm, htn, imsp, ascites, sepsis, venti, cancer, chf, dyspnea, smk, copd, dialysis, aki, covid, surg_type, anes, opetime, transfusion, conversion, reop, postop_vte, postop_hemo, postop_pulmo, postop_cardio, postop_neuro, ssi, los, death, surge) %>% 
+  tbl_summary(     
+    by = surge,                                               # 転帰ごとにテーブル全体を層別化
+    statistic = list(all_continuous() ~ "{mean} ({sd})",        # 連続列に対して統計量を算出してフォーマット
+                     all_categorical() ~ "{n} / {N} ({p}%)"),   # カテゴリ列に対して統計量を算出してフォーマット
+    digits = all_continuous() ~ 2,                              # 連続列に対して丸めの指定
+    type   = all_categorical() ~ "categorical",                 # 強制的に全カテゴリ水準を表示
+    label  = list(                                              # 列名のラベルを表示
+      surge   ~ "Surge",
+      age ~ "Age(years)",
+      age_cat ~ "Age category",
+      sex ~ "Sex",
+      bmi.y ~ "BMI",
+      race.y ~ "Race",
+      func ~ "Functional Status",
+      emergency ~ "Emergency Surgery",
+      asa.y ~ "ASA-PS",
+      dm ~ "DM",
+      htn ~ "HT",
+      imsp ~ "Immunosuppression",
+      ascites ~ "Ascites",
+      sepsis ~ "Sepsis",
+      venti ~ "Ventilator",
+      cancer ~ "Cancer",
+      chf ~ "CHF",
+      dyspnea ~ "Dyspnea",
+      smk ~ "Smoking",
+      copd ~ "COPD",
+      dialysis ~ "Dialysis",
+      aki ~ "AKI",
+      covid ~ "Preoperative covid infection",
+      surg_type ~ "Type of Surgery",
+      anes ~ "Type of Anesthesia",
+      opetime ~ "Operation time",
+      transfusion ~ "Transfusion",
+      conversion ~ "Conversion",
+      reop ~ "Reoperation",
+      postop_vte ~ "VTE",
+      postop_hemo ~ "bleeding",
+      postop_pulmo ~ "pulmo comp",
+      postop_cardio ~ "cardio comp",
+      postop_neuro ~ "neuro comp",
+      ssi ~ "SSI",
+      los ~ "LOS",
+      death ~ "Death",
+    missing_text = "Missing"                                    # 欠測値の表示方法
+  ))
+```
+
+# Basic Statistics
+```{r}
+# Continuous variables
+t.test(age ~ surge, data = covsurge)
+t.test(opetime ~ surge, data = covsurge)
+t.test(transfusion ~ surge, data = covsurge)
+t.test(los ~ surge, data = covsurge)
+
+# Categorical variables (chi.sq)
+chisq.test(covsurge$surge, covsurge$sex)
+chisq.test(covsurge$surge, covsurge$race.y)
+chisq.test(covsurge$surge, covsurge$func)
+chisq.test(covsurge$surge, covsurge$emergency)
+chisq.test(covsurge$surge, covsurge$dm)
+chisq.test(covsurge$surge, covsurge$htn)
+chisq.test(covsurge$surge, covsurge$imsp)
+chisq.test(covsurge$surge, covsurge$cancer)
+chisq.test(covsurge$surge, covsurge$smk)
+chisq.test(covsurge$surge, covsurge$copd)
+chisq.test(covsurge$surge, covsurge$reop)
+chisq.test(covsurge$surge, covsurge$postop_hemo)
+chisq.test(covsurge$surge, covsurge$ssi)
+
+
+# Categorical variable (Fisher's exact test)
+fisher.test(covsurge$surge, covsurge$bmi.y)
+fisher.test(covsurge$surge, covsurge$func)
+fisher.test(covsurge$surge, covsurge$emergency)
+fisher.test(covsurge$surge, covsurge$asa.y)
+fisher.test(covsurge$surge, covsurge$ascites)
+fisher.test(covsurge$surge, covsurge$sepsis)
+fisher.test(covsurge$surge, covsurge$venti)
+fisher.test(covsurge$surge, covsurge$chf)
+fisher.test(covsurge$surge, covsurge$dyspnea)
+fisher.test(covsurge$surge, covsurge$dialysis)
+fisher.test(covsurge$surge, covsurge$aki)
+fisher.test(covsurge$surge, covsurge$med_vac)
+fisher.test(covsurge$surge, covsurge$covid)
+fisher.test(covsurge$surge, covsurge$surg_type, simulate.p.value=T)
+fisher.test(covsurge$surge, covsurge$anes)
+fisher.test(covsurge$surge, covsurge$conversion)
+fisher.test(covsurge$surge, covsurge$postop_vte)
+fisher.test(covsurge$surge, covsurge$postop_pulmo)
+fisher.test(covsurge$surge, covsurge$postop_cardio)
+fisher.test(covsurge$surge, covsurge$postop_neuro)
+fisher.test(covsurge$surge, covsurge$death)
+
+
+#chisq.test(covsurge$surge, covsurge$pat_vac)
+
+
+```
+
+# Main analysis
+```{r}
+model1 <- glm(death ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model1)
+exp(coef(model1))
+exp(confint(model1))
+```
+
+# Secondary Analysis
+```{r}
+# VTE
+model2 <- glm(postop_vte ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model2)
+exp(coef(model2))
+exp(confint(model2))
+
+# Bleeding
+model3 <- glm(postop_hemo ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model3)
+exp(coef(model3))
+exp(confint(model3))
+
+# pulmonary
+model4 <- glm(postop_pulmo ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model4)
+exp(coef(model4))
+exp(confint(model4))
+
+# cardiac
+model5 <- glm(postop_cardio ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model5)
+exp(coef(model5))
+exp(confint(model5))
+
+# ssi
+model6 <- glm(ssi ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model6)
+exp(coef(model6))
+exp(confint(model6))
+
+# neuro
+model7 <- glm(postop_neuro ~ surge + age + sex + race.y + bmi.y + dm + htn + imsp + sepsis + venti + cancer + chf + copd + dialysis + aki + med_vac + anes + covid + omicron + delta, family=binomial(link = 'logit'), data = covsurge)
+summary(model7)
+exp(coef(model7))
+exp(confint(model7))
+```
+
+# Test of Homogeneity
+```{r}
+
+```
+
+# Sensitivity Analysis
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

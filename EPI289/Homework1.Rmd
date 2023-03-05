@@ -67,6 +67,8 @@ df_nhefs$age_quad <- df_nhefs$age*df_nhefs$age
 model4 <- glm(death ~ qsmk + sex + race + age + age_quad, data = df_nhefs, family=binomial('logit'))
 summary(model4)
 confint(model4, param="qsmk", level=.95)
+exp(coefficients(model4))
+exp(confint(model4))
 ```
 
 # Question 57

@@ -1,0 +1,122 @@
+---
+title: "Homework3_BST226"
+author: "Takuto Yoshida"
+date: "2023-02-19"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# install and library necessary packages
+```{r}
+#install.packages("ggplot2")
+install.packages("nlme")
+library(ggplot2)
+library(nlme)
+```
+
+# data set import
+```{r}
+hair <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment3/hair.txt")
+colnames(hair) <- c("trt", "ID", "Y1", "Y2", "Y3", "Y4", "Y5") 
+head(hair)
+```
+
+#Question1
+```{r}
+hair$trt <- as.factor(hair$trt)
+
+# subset to each treatment group
+hair.m <- hair[which(hair$trt==1),]
+hair.p <- hair[which(hair$trt==0),]
+# calculate summary statistics for each treatment group
+hair.m.n <- sapply(hair.m[,3:7],length)
+hair.m.mean <- sapply(hair.m[,3:7],mean)
+hair.m.sd <- sapply(hair.m[,3:7],sd)
+hair.m.var <- sapply(hair.m[,3:7],var)
+hair.p.n <- sapply(hair.p[,3:7],length)
+hair.p.mean <- sapply(hair.p[,3:7],mean)
+hair.p.sd <- sapply(hair.p[,3:7],sd)
+hair.p.var <- sapply(hair.p[,3:7],var)
+# save and print the summary statistics table
+meanhair.wide <- data.frame(Variable=rep(c("y1","y2","y3","y4","y5"),2),
+                          trt=c(rep(1,5),rep(0,5)),
+                          N=c(hair.m.n,hair.p.n),
+                          Mean=c(hair.m.mean,hair.p.mean),
+                          Std=c(hair.m.sd,hair.p.sd),
+                          Variance=c(hair.m.var,hair.p.var))
+meanhair.wide
+```
+
+# Question 2
+```{r}
+hair.long <- reshape(hair, direction = "long", varying = list(colnames(hair)[3:7]), 
+                   v.names = "y", idvar = "id", timevar = "week", times = c(0, 8, 16, 24, 32))
+hair.long <- hair.long[order(hair.long$id),]
+hair.long$t <- rep(c(1:5),nrow(hair))
+col_order <- c("id", "trt", "y", "week", "t")
+hair.long <- hair.long[, col_order]
+View(hair.long)
+head(hair.long)
+```
+
+```{r}
+# Calculate means over week by group
+meanhair.long <- aggregate(hair.long$y, c(list(hair.long$week),list(hair.long$trt)), mean)
+meanhair.long <- data.frame(meanhair.long)
+colnames(meanhair.long)<-c("week","trt","mean")
+
+# Plot means over week by group
+meanhair.plot <- ggplot(aes(x=week,y=mean,color=trt),data=meanhair.long) +
+  geom_line() + geom_point() + labs(title="Mean response profile of…between two groups",x="Time in Weeks", y="Mean Outcome Variable (units)",color="Treatment Group")
+meanhair.plot
+```
+
+
+# Question 3
+```{r}
+# Change variables into factors w/ correct reference categories and create “position” variable
+hair.long$week <- relevel(as.factor(hair.long$week), ref="0")
+hair.long$trmt <- relevel(as.factor(hair.long$trt), ref="0")
+hair.long$id <- as.factor(hair.long$id)
+hair.long$t <- as.integer(hair.long$week)
+
+# Run gls model w/ unstructured correlation matrix
+model <- gls(y ~ trt + week + trt:week, data=hair.long, corr=corSymm(form=~t | id), method="REML", weights=varIdent(form=~1|week))
+anova(model)
+summary(model)
+```
+
+# Question 4
+```{r}
+getVarCov.fix <- function (obj, individual = 1, ...) {
+  S <- corMatrix(obj$modelStruct$corStruct)[[individual]]
+  if (!is.null(obj$modelStruct$varStruct)) {
+    ## ind <- obj$groups == individual                                      # index from dataset
+    dimensions.Ri <- sapply(corMatrix(obj$modelStruct$corStruct), nrow)     # dimentions from corMatrix()
+    ind <- rep(seq_along(dimensions.Ri), dimensions.Ri) == individual       # index from dimensions
+    vw <- 1/varWeights(obj$modelStruct$varStruct)[ind]
+  }
+  else vw <- rep(1, nrow(S))
+  vars <- (obj$sigma * vw)^2
+  result <- t(S * sqrt(vars)) * sqrt(vars)
+  class(result) <- c("marginal", "VarCov")
+  attr(result, "group.levels") <- names(obj$groups)
+  result
+}
+
+# extract covariance/correlation matrix
+getVarCov(model) 
+getVarCov.fix(model)
+cov2cor(getVarCov(model))
+```
+
+
+
+
+
+
+
+

@@ -1,0 +1,134 @@
+---
+title: "Homework_BST226"
+author: "Takuto Yoshida"
+date: "2023-03-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import library
+```{r}
+library(tidyverse)
+library(nlme)
+```
+
+# Import Dataset
+```{r}
+sleep <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment4/sleepdep.txt")
+colnames(sleep) <- c("id", "trt", "y1", "y2", "y3", "y4") # trt1=Caffeine, trt0=Placebo
+sleep$Group[sleep$trt==1] <- "1:Caffeine"
+sleep$Group[sleep$trt==0] <- "0:Placebo"
+head(sleep)
+```
+# Question1
+```{r}
+
+# calculate means over time by Group from wide format data
+group1.means <- colMeans(subset(sleep,trt=="1:Caffeine")[,3:6])
+group0.means <- colMeans(subset(sleep,trt=="0:Placebo")[,3:6])
+# combine means with number of observations
+group1.summary <- rbind(group1.means, n = c(length(sleep$y1[sleep$trt == "1:Caffeine"]),
+                            length(sleep$y2[sleep$trt == "1:Caffeine"]),
+                            length(sleep$y3[sleep$trt == "1:Caffeine"]),
+                            length(sleep$y4[sleep$trt == "1:Caffeine"])))
+group0.summary <- rbind(group0.means, n = c(length(sleep$y1[sleep$trt == "0:Placebo"]),
+                            length(sleep$y2[sleep$trt == "0:Placebo"]),
+                            length(sleep$y3[sleep$trt == "0:Placebo"]),
+                            length(sleep$y4[sleep$trt == "0:Placebo"])))
+group1.summary
+group0.summary
+
+
+# Wide form to long form
+sleepdep.long <- reshape(sleep, direction = "long", varying = list(colnames(sleep)[3:6]), 
+                   v.names = "y", idvar = "id", timevar = "time", times = c(0, 12, 24, 36))
+sleepdep.long <- sleepdep.long[order(sleepdep.long$id),]
+sleepdep.long$t <- rep(c(1:4),nrow(sleep))
+col_order <- c("id", "trt", "y", "time", "t")
+sleepdep.long <- sleepdep.long[, col_order]
+sleepdep.long[1:8,]
+```
+
+```{r}
+# Calculate means over time by program from long format data
+meansleepdep.long <- aggregate(sleepdep.long$y, c(list(sleepdep.long$time), 
+     list(sleepdep.long$trt)), mean)
+meansleepdep.long <- data.frame(meansleepdep.long)
+colnames(meansleepdep.long) <- c("time","trt","mean")
+meansleepdep.long$trt <- as.factor(meansleepdep.long$trt)
+
+# Plot means over time for program comparison
+meansleepdep.plot <- ggplot(aes(x = time, y = mean, color = trt), data=meansleepdep.long) +
+  geom_line() + 
+  geom_point() + 
+  labs(title="Plot of mean reaction time by treatment groups",
+       x = "Time (hours)", 
+       y = "Mean Reaction Time (ms)",
+       color = "Treatment Group") +
+  theme_bw()
+meansleepdep.plot
+```
+# Question2
+```{r}
+# -- Change variables into factors w/ correct reference categories and create “position” variable
+sleepdep.long$time <- relevel(as.factor(sleepdep.long$time), ref="0")
+sleepdep.long$trt  <- relevel(as.factor(sleepdep.long$trt), ref="0")
+sleepdep.long$id  <- as.factor(sleepdep.long$id)
+sleepdep.long$t <- as.integer(sleepdep.long$time)
+
+# -- Run gls model w/ unstructured correlation matrix
+model.un <- gls(y ~ trt*time, data = sleepdep.long, corr = corSymm(form=~t | id), 
+     weights = varIdent(form=~1|t), na.action=na.omit)
+summary(model.un)$AIC
+
+# -- Run gls model w/ compound symmetry
+model.cs <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1 | id),na.action=na.omit)
+summary(model.cs)$AIC
+
+# -- Run gls model w/ heterogeneous compound symmetry
+model.csh <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1|id), weights = varIdent(form=~1|t), na.action=na.omit)
+summary(model.csh)$AIC
+
+# -- Run gls model w/ 1st-order autoregressive
+model.ar1 <- gls(y ~ trt * time, data = sleepdep.long, corr=corAR1(form=~1|id), na.action=na.omit)
+summary(model.ar1)$AIC
+
+# -- Run gls model w/ heterogeneous 1st-order autoregressive
+model.arh1 <- gls(y ~ trt * time, data = sleepdep.long, corr = corAR1(form=~1 | id), 
+     weights = varIdent(form=~1|t), na.action=na.omit)
+summary(model.arh1)$AIC
+```
+
+# Question3
+```{r}
+maximal <- gls(y~trt*time,data=sleepdep.long,
+               correlation=corSymm(form=~1|id),method="ML")
+
+summary(maximal)
+(-2) * maximal$logLik
+anova(maximal)
+```
+
+
+
+# Question 6
+```{r}
+# -- Create a time variable that is continuous, not a factor
+sleepdep.long$time_continuous <- as.numeric(as.character(sleepdep.long$time))
+
+# -- The following is an illustration w/ unstructured covariance; you may need to replace 
+#     with choice of model for the covariance from Part 2. Also, consider when you might
+#     want to use ML rather than the default REML estimation.
+# -- Fitting a linear model w/ unstructured correlation matrix using ML instead of REML
+linear <- gls(y ~ trt + time_continuous + trt * time_continuous, data = sleepdep.long, corr = corSymm(form=~1 | id), method = "ML", na.action=na.omit)
+summary(linear)
+```
+
+# Question 8
+```{r}
+anova(linear, maximal)
+```
+

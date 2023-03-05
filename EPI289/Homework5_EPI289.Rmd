@@ -1,0 +1,95 @@
+---
+title: "Homework5_EPI289"
+author: "Takuto Yoshida"
+date: "2023-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import data and library
+```{r}
+if (!require(readxl)) {install.packages("readxl")}
+if (!require(sem)) {install.packages("sem")}
+nhefs <- read_excel("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework1/nhefs.xlsx")
+summary(nhefs)
+
+# for simplicity, ignore subjects with missing outcome or missing instrument
+nhefs.iv <- nhefs[!is.na(nhefs$price82),]
+
+# Create censor
+nhefs.iv$cens <- ifelse(is.na(nhefs.iv$wt82), 1, 0)
+
+# Create instrumental variable
+nhefs.iv$highprice <- ifelse(nhefs.iv$price82>=1.5, 1, 0)
+```
+
+# Question 22
+```{r}
+# estimation of denominator of censoring weights
+denom.cens <- glm(cens ~ qsmk + sex + race + age + smokeintensity + weakheart, 
+                  family = binomial(), data = nhefs.iv)
+summary(denom.cens)
+pd.cens <- 1-predict(denom.cens, type = "response")
+
+# Calculate the non stabilized weights
+nhefs.iv$w <- 1/pd.cens
+
+# Estimating the average causal effect using the standard IV estimator
+# via two-stage-least-squares regression
+dat <- nhefs.iv[which(nhefs.iv$cens!=1),]
+
+model1 <- tsls(wt82_71 ~ qsmk, ~ highprice, data = dat, weight = w)
+summary(model1)
+confint(model1) 
+```
+
+# Question 28
+```{r}
+# Pr[A=1|Z=1]
+AZ1 <- weighted.mean(dat$qsmk[dat$highprice==1], dat$w[dat$highprice==1])
+
+# Pr[A=1|Z=0]
+AZ0 <- weighted.mean(dat$qsmk[dat$highprice==0], dat$w[dat$highprice==0])
+
+#E[Y|Z=1]
+YZ1 <- weighted.mean(dat$wt82_71[dat$highprice==1], dat$w[dat$highprice==1])
+
+#E[Y|Z=0]
+YZ0 <- weighted.mean(dat$wt82_71[dat$highprice==0], dat$w[dat$highprice==0])
+
+# Proportion of compliers
+## AZ1-AZ0: denominator
+denominator <- AZ1 - AZ0
+numerator <- YZ1 - YZ0
+
+denominator
+numerator/denominator
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
