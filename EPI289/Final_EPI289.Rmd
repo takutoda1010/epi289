@@ -1,0 +1,243 @@
+---
+title: "Final_EPI946"
+author: "Takuto Yoshida"
+date: "2023-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import library
+```{r}
+if (!require(readxl)) {install.packages("readxl")}
+if (!require(geepack)) {install.packages("geepack")}
+if (!require(sandwich)) {install.packages("sandwich")}
+
+library("readxl")
+library("geepack")
+library("sandwich")
+```
+
+
+# Data Import
+```{r}
+hiv <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/EPI289/Homework6/hivpoint.csv")
+summary(hiv) # There are missing value in cd4, rna, and logrna
+head(hiv)
+```
+## Question 6-10
+## IP weighting with non-stabilized weight for confounding and selection bias
+```{r}
+# Create the censoring variable
+hiv$cens <- ifelse(is.na(hiv$logrna), 1, 0)
+
+# Exchangiability are hold by conditioning age + sex + origin + year + mode + cd4_0_cat + rna_0_cat
+## Estimation of the denominator of treatment weights
+denom.tx <- glm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), family=binomial('logit'), data=hiv)
+summary(denom.tx)
+hiv$pd.trt <- predict(denom.tx, hiv, type="response")
+
+## Estimation of the denominator of censoring weights
+denom.cens <- glm(cens ~ treatment + age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), family=binomial('logit'), data=hiv)
+summary(denom.cens)
+pd.cens <- 1-predict(denom.cens, type="response")
+
+## Define the treatment and censoring weights
+hiv$nw.a <- ifelse(hiv$treatment==1, 1/hiv$pd.trt, 1/(1-hiv$pd.trt))
+hiv$nw.c <- 1/pd.cens
+
+## Multiple the two weights
+hiv$nw <- hiv$nw.a*hiv$nw.c
+summary(hiv$nw)
+
+## Fit doubly-weighted outcome regression
+msm.nw <- geeglm(logrna ~ treatment, data=hiv, weights=nw, id=id, corstr="independence")
+summary(msm.nw)
+
+beta <- coef(msm.nw)
+SE <- coef(summary(msm.nw))[,2]
+lcl <- beta-qnorm(0.975)*SE 
+ucl <- beta+qnorm(0.975)*SE
+cbind(beta, lcl, ucl)
+```
+# Question 12-16
+## G-estimation for counfounding adjustment and IP weighting with non-stabilized weights for selection bias
+```{r}
+hiv.gest <- hiv[which(!is.na(hiv$logrna)),] # provisionally ignore subjects with missing values for logrna
+
+# G-estimation: Checking one possible value of psi
+hiv.gest$psi <- -1.882
+hiv.gest$Hpsi <- hiv.gest$logrna - hiv.gest$psi*hiv.gest$treatment
+
+fit <- glm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat) + Hpsi, family = binomial, data=hiv.gest)
+summary(fit)
+
+# G-estimation: Checking multiple possible values of psi
+grid <- seq(from = -3.0, to = -0.5, by=0.1)
+j = 0
+Hpsi.coefs <- cbind(rep(NA, length(grid)), rep(NA, length(grid)))
+colnames(Hpsi.coefs) <- c("Estimate", "p-value")
+
+for (i in grid){
+  psi = i
+  j = j+1
+  hiv.gest$Hpsi <- hiv.gest$logrna - psi * hiv.gest$treatment 
+  
+  gest.fit <- glm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat) + Hpsi, family=binomial, data=hiv.gest)
+  Hpsi.coefs[j,1] <- summary(gest.fit)$coefficients["Hpsi", "Estimate"]
+  Hpsi.coefs[j,2] <- summary(gest.fit)$coefficients["Hpsi", "Pr(>|z|)"]
+}
+Hpsi.coefs
+
+rownames(Hpsi.coefs) <- grid
+Hpsi.coefs
+
+# G-estimation + IPW for selection bias adjustment
+hiv$c <- ifelse(is.na(hiv$logrna), 1, 0)
+
+# estimation of denominator of censoring weights
+cw.denom <- glm(c==0 ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat) + treatment, family=binomial, data=hiv)
+
+hiv.c <- hiv[which(!is.na(hiv$logrna)),] # no censoring data
+hiv.c$pd.c <- predict(cw.denom, hiv.c, type="response") # Estimation of censoring with no censoring data
+
+hiv.c$wc <- 1/(hiv.c$pd.c) # non stabilized weights for censoring
+summary(hiv.c$wc)
+
+
+# G-estimation: Closed-form estimator #
+logit.est <- glm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), family=binomial(), data=hiv.c, weight=wc)
+summary(logit.est)
+hiv.c$ptreatment <- predict(logit.est, hiv.c, type = "response")
+summary(hiv.c$ptreatment)
+
+# solve sum(w_c * H(psi) * (treatment - E[treatment | L]))  = 0
+# for a single psi and H(psi) = logrna_71 - psi * treatment
+# this can be solved as psi = sum( w_c * logrna_71 * (treatment - ptreatment)) / sum(w_c * treatment * (treatment - ptreatment))
+
+with(hiv.c, sum(wc*logrna*(treatment - ptreatment)) / sum(wc*treatment*(treatment - ptreatment)))
+
+# finding the approximate 95% CI
+#install.packages("geepack")
+library("geepack")
+grid <- seq(from = -2.1,to = -1.7, by = 0.02)
+j = 0
+Hpsi.coefs <- cbind(rep(NA,length(grid)), rep(NA, length(grid)))
+colnames(Hpsi.coefs) <- c("Estimate", "p-value")
+
+for (i in grid){
+  psi = i
+  j = j+1
+  hiv.c$Hpsi <- hiv.c$logrna - psi * hiv.c$treatment 
+  gest.fit <- geeglm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + 
+                       as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat) + Hpsi,
+                     family=binomial, data=hiv.c,
+                  weights=wc, id=id, corstr="independence")
+  Hpsi.coefs[j,1] <- summary(gest.fit)$coefficients["Hpsi", "Estimate"]
+  Hpsi.coefs[j,2] <- summary(gest.fit)$coefficients["Hpsi", "Pr(>|W|)"]
+}
+Hpsi.coefs
+rownames(Hpsi.coefs) <- grid
+Hpsi.coefs
+```
+
+## Question 18 - 21
+```{r}
+mod.q18 <- lm(logrna ~ as.factor(treatment) + age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), data=hiv)
+summary(mod.q18)
+coefficients(mod.q18)
+confint(mod.q18, param="treatment", level=.95)
+
+```
+
+## Question 23 - 28
+```{r}
+# PS for confounding and IPW for selection bias
+# Create the censoring variable
+hiv$cens <- ifelse(is.na(hiv$logrna), 1, 0)
+
+denom.cens <- glm(cens ~ treatment + age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), family=binomial('logit'), data=hiv)
+summary(denom.cens)
+pd.cens <- 1-predict(denom.cens, type="response")
+
+# Calculate the non stabilized weights
+hiv$w <- 1/pd.cens
+
+# PS: Parametric estimation with many covariates
+fit.para <- glm(treatment ~ age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), 
+                 data=hiv, family=binomial())
+summary(fit.para)
+
+
+hiv$p.treatment <- predict(fit.para, type="response")
+head(cbind(hiv$id, hiv$sex, hiv$age, hiv$p.treatment))
+
+summary(hiv$p.treatment)
+fit.ps.cont <- glm(logrna~treatment+p.treatment+I(p.treatment*p.treatment), data=hiv, weights = w)
+summary(fit.ps.cont)
+confint(fit.ps.cont, param="treatment", level=.95)
+```
+
+# Question 29 - 33
+```{r}
+# Standardization for confounding.
+# create a dataset with 3 copies of each subject
+hiv$interv <- -1 # 1st copy: equal to original one
+
+interv0 <- hiv # 2nd copy: treatment set to 0, outcome to missing
+interv0$interv <- 0
+interv0$treatment <- 0
+interv0$logrna <- NA
+
+interv1 <- hiv # 3rd copy: treatment set to 1, outcome to missing
+interv1$interv <- 1
+interv1$treatment <- 1
+interv1$logrna <- NA
+
+onesample <- rbind(hiv, interv0, interv1) # combining datasets
+
+# linear model to estimate mean outcome conditional on treatment and confounders
+# parameters are estimated using original observations only (hiv)
+# parameter estimates are used to predict mean outcome for observations with 
+# treatment set to 0 (interv=0) and to 1 (interv=1)
+
+std <- glm(logrna ~ treatment + age + as.factor(sex) + as.factor(origin) + year + as.factor(mode) + as.factor(cd4_0_cat) + as.factor(rna_0_cat), 
+           data=onesample)
+summary(std)   
+onesample$predicted_meanY <- predict(std, onesample)
+
+# estimate mean outcome in each of the groups interv=0, and interv=1
+# this mean outcome is a weighted average of the mean outcomes in each combination 
+# of values of treatment and confounders, that is, the standardized outcome
+-mean(onesample[which(onesample$interv==0),]$predicted_meanY)+mean(onesample[which(onesample$interv==1),]$predicted_meanY)
+```
+
+# Question 35 - 38
+```{r}
+std <- glm(logrna ~ treatment + p.treatment+I(p.treatment*p.treatment), 
+           data=onesample)
+summary(std)   
+onesample$predicted_meanY <- predict(std, onesample)
+-mean(onesample[which(onesample$interv==0),]$predicted_meanY)+mean(onesample[which(onesample$interv==1),]$predicted_meanY)
+
+## We need to create the new propensity score by using onesample
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

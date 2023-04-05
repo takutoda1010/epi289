@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(tidyverse)
 library(nlme)
+library(ggplot2)
 ```
 
 # Import Dataset
@@ -80,32 +81,37 @@ sleepdep.long$id  <- as.factor(sleepdep.long$id)
 sleepdep.long$t <- as.integer(sleepdep.long$time)
 
 # -- Run gls model w/ unstructured correlation matrix
-model.un <- gls(y ~ trt*time, data = sleepdep.long, corr = corSymm(form=~t | id), 
+un <- gls(y ~ trt*time, data = sleepdep.long, corr = corSymm(form=~t | id), 
      weights = varIdent(form=~1|t), na.action=na.omit)
-summary(model.un)$AIC
+summary(un)$AIC
 
 # -- Run gls model w/ compound symmetry
-model.cs <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1 | id),na.action=na.omit)
-summary(model.cs)$AIC
+cs <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1 | id),na.action=na.omit)
+summary(cs)$AIC
 
 # -- Run gls model w/ heterogeneous compound symmetry
-model.csh <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1|id), weights = varIdent(form=~1|t), na.action=na.omit)
-summary(model.csh)$AIC
+csh <- gls(y ~ trt * time, data = sleepdep.long, corr = corCompSymm(form=~1|id), weights = varIdent(form=~1|t), na.action=na.omit)
+summary(csh)$AIC
 
 # -- Run gls model w/ 1st-order autoregressive
-model.ar1 <- gls(y ~ trt * time, data = sleepdep.long, corr=corAR1(form=~1|id), na.action=na.omit)
-summary(model.ar1)$AIC
+ar1 <- gls(y ~ trt * time, data = sleepdep.long, corr=corAR1(form=~1|id), na.action=na.omit)
+summary(ar1)$AIC
 
 # -- Run gls model w/ heterogeneous 1st-order autoregressive
-model.arh1 <- gls(y ~ trt * time, data = sleepdep.long, corr = corAR1(form=~1 | id), 
+arh1 <- gls(y ~ trt * time, data = sleepdep.long, corr = corAR1(form=~1 | id), 
      weights = varIdent(form=~1|t), na.action=na.omit)
-summary(model.arh1)$AIC
+summary(arh1)$AIC
+
+anova(csh, un)
+anova(cs, csh)
+anova(arh1, un)
+anova(ar1, arh1)
 ```
 
 # Question3
 ```{r}
 maximal <- gls(y~trt*time,data=sleepdep.long,
-               correlation=corSymm(form=~1|id),method="ML")
+               correlation=corCompSymm(form=~1|id),method="REML")
 
 summary(maximal)
 (-2) * maximal$logLik
@@ -123,12 +129,42 @@ sleepdep.long$time_continuous <- as.numeric(as.character(sleepdep.long$time))
 #     with choice of model for the covariance from Part 2. Also, consider when you might
 #     want to use ML rather than the default REML estimation.
 # -- Fitting a linear model w/ unstructured correlation matrix using ML instead of REML
-linear <- gls(y ~ trt + time_continuous + trt * time_continuous, data = sleepdep.long, corr = corSymm(form=~1 | id), method = "ML", na.action=na.omit)
+linear <- gls(y ~ trt + time_continuous + trt * time_continuous, data = sleepdep.long, corr = corCompSymm(form=~t | id), method = "ML", na.action=na.omit)
 summary(linear)
+(-2) * linear$logLik
+anova(linear)
 ```
 
 # Question 8
 ```{r}
-anova(linear, maximal)
+# Slide 47 - Quadratic model, continuous month, interations, CS covariance, ML
+quadratic <- gls(y~trt + time_continuous + I(time_continuous^2)+
+                   trt*time_continuous+trt*I(time_continuous^2),
+                 data=sleepdep.long,correlation=corCompSymm(form=~1|id),method="ML")
+
+summary(quadratic)
+(-2) * quadratic$logLik
+anova(quadratic)
+
+
+# Slide 48 - Chi-squared p-value from LRT H0: linear model vs H1: quadratic model
+anova(linear, quadratic)
+```
+
+```{r}
+# Chi-squared p-value from LRT H0: linear model vs H1: saturated model
+anova(quadratic, maximal)
+```
+
+
+```{r}
+# Final model
+# Final model: CS covariance, linear trend, REML
+final <- gls(y~trt*time,data=sleepdep.long,
+             corr=corCompSymm(form=~1|id),method="REML")
+
+summary(final)
+(-2) * final$logLik
+anova(final)
 ```
 

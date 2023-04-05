@@ -1,0 +1,133 @@
+---
+title: "Homework4_BST223"
+author: "Takuto Yoshida"
+date: "2023-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question1
+```{r}
+umaru <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework4/Umaru.csv")
+head(umaru)
+```
+
+```{r}
+# Question1b
+summary(umaru$time)
+umaru$time <- ifelse(umaru$time >= 730, 730, umaru$time)
+summary(umaru$time)
+```
+
+```{r}
+# Question1c
+fit.km <- survfit(Surv(time, censor==1)~ivdrug, data=umaru) 
+summary(fit.km)
+
+## Plot the survival function
+library(survminer)
+fit <- list(OS = fit.km)
+ggsurvplot_combine(fit, umaru,
+                   title = "Kaplan-Meier Estimate of the IV drug-specific Survivor Function",
+                   xlab = "Time to Drug Relapse (days)",
+                   ylab = "Survival Probability",
+                   conf.int = T, 
+                   legend.labs = c("Never", "Prev/Recent"))
+
+```
+
+```{r}
+# Question 1d
+## Exponential AFT model
+names(umaru)
+fitAFT_exponential <- survreg(Surv(time, censor)~ivdrug + age + nonwhite + site + treat, data = umaru, dist = "exponential")
+summary(fitAFT_exponential)
+fitAFT_exponential$loglik[2]*2
+AIC(fitAFT_exponential)
+
+## Weibull AFT model
+fitAFT_weibull <- survreg(Surv(time, censor)~ivdrug + age + nonwhite + site + treat, data = umaru, dist = "weibull")
+summary(fitAFT_weibull)
+fitAFT_weibull$loglik[2]*2
+AIC(fitAFT_weibull)
+```
+```{r}
+# Question1e
+## Create the function to get the confidence interval
+get_AFT_CI <- function(fit, exponentiate=FALSE,digits = 3){
+        if(class(fit) %in% "aftgee"){
+                out <- cbind(fit$coef.res,
+                             fit$coef.res - 1.96*sqrt(diag(fit$var.res)),
+                             fit$coef.res + 1.96*sqrt(diag(fit$var.res)))
+        } else{
+                out <- cbind(fit$coef, confint(fit))
+        }
+        if(exponentiate){
+                colnames(out) <- c("exp(beta)","2.5%", "97.5%")
+                round(exp(out),digits)
+        } else{
+                colnames(out) <- c("beta","2.5%", "97.5%")
+                round(out,digits)
+        }
+}
+
+## Exponential AFT model
+exp(-0.42418)
+get_AFT_CI(fit=fitAFT_exponential, exponentiate=TRUE)
+
+## Weibull AFT model
+exp(-0.42907)
+get_AFT_CI(fit=fitAFT_weibull, exponentiate=TRUE)
+```
+# Question2
+```{r}
+# Question2a
+bm <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework3/BoneMarrow.csv")
+
+names(bm)
+str(bm)
+head(bm)
+fitPH <- coxph(Surv(time, status)~as.factor(plateS) + ageP + as.factor(maleP) + as.factor(cmvP) + waitCat + group + strata(hosp), data = bm)
+summary(fitPH)
+```
+
+```{r}
+# Question2d
+bm %>% filter(id %in% c(1, 5, 20))
+```
+
+```{r}
+# Question2e
+## Data cleaning
+bm$plateS <- ifelse(bm$plateT>0, 1, 0)
+
+## Creating multiple recodes dataset
+names(bm)
+head(bm)
+
+bm_cut <- tmerge(data1 = bm, data2 = bm,
+                 id = id,
+                 stat = event(time, status),
+                 plt_time_vary = tdc(plateT))
+bm_cut %>% 
+  filter(id %in% c(1:5, 20)) %>%
+  select(c(id, plateS, plateT, status, time, tstart, tstop, stat, plt_time_vary))
+```
+```{r}
+# Question2f
+cox.1 <- coxph(Surv(tstart, tstop, stat) ~ as.factor(plateS) + ageP + as.factor(maleP) + as.factor(cmvP) + waitCat + group + strata(hosp), data = bm_cut)
+summary(cox.1)
+```
+
+
+
+
+
+
+
+
+
+

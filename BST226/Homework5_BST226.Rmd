@@ -1,0 +1,189 @@
+---
+title: "Homework5_BST226"
+author: "Takuto Yoshida"
+date: "2023-03-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import library
+```{r}
+library(tidyverse)
+library(nlme)
+library(ggplot2)
+library(dplyr)
+```
+
+## Question1
+```{r}
+# Import data set
+compgrip <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment5/compgrip.txt") 
+colnames(compgrip) <- c("id", "trt", "y0", "y1", "y2", "y3") 
+
+# Change the data set into long format 
+compgrip.long <- reshape(compgrip,
+                         direction = "long",
+                         varying = list(names(compgrip)[3:6]),
+                         v.names = "y",
+                         timevar = "time",
+                         times = c(0, 1, 2, 3))
+compgrip.long <- compgrip.long[order(compgrip.long$id),]
+compgrip.long$t <- rep(c(1:4), nrow(compgrip))
+col_order <- c("id", "trt", "y", "time", "t")
+compgrip.long <- compgrip.long[, col_order]
+compgrip.long[1:8,]
+
+# Change the variable class
+compgrip.long <- compgrip.long %>%
+  mutate(id = factor(id),
+         trt = factor(trt, levels = c("1", "2")))
+
+# Compgrip means by treatment group
+compgrip.long %>%
+  group_by(trt, time) %>%
+  summarize(avg = mean(y)) %>%
+  ungroup() %>%
+  ggplot(aes(time, avg, color = trt)) +
+  geom_line() +
+  geom_point(size = 3) +
+  geom_point(size  = 3, 
+             shape = 1,
+             color = "black") +
+  labs(x = "Times",
+       y = "Mean Grip Strength (N)",
+       title = "Mean Grip Strength vs Weeks (by Treatment Group)",
+       color="Treatment Group") +
+  theme_bw()
+```
+
+## Question2
+```{r}
+# Question (a)
+## Categorical model
+compgrip.long$time <- as.factor(compgrip.long$time)
+maximal <- gls(y ~ trt*time, data = compgrip.long, corr = corSymm(form=~1|id), weights=varIdent(form=~1|time), method="ML", na.action=na.omit)
+# summary(maximal)
+# anova(maximal)
+
+## Linear effect of time
+compgrip.long$time <- as.numeric(as.character(compgrip.long$time))
+compgrip.long$time_continuous <- as.numeric(as.character(compgrip.long$time))
+linear <- gls(y ~ trt + time_continuous + trt * time_continuous, data = compgrip.long, corr = corSymm(form=~t | id), method = "ML", weights=varIdent(form=~1|time), na.action=na.omit)
+# summary(linear)
+# anova(linear)
+
+
+## Quadratic effect of time
+quadratic <- gls(y~trt + time_continuous + I(time_continuous^2)+
+                   trt*time_continuous+trt*I(time_continuous^2),
+                 data=compgrip.long,correlation=corSymm(form=~1|id),weights=varIdent(form=~1|time), method="ML")
+# summary(quadratic)
+# anova(quadratic)
+
+
+## Chi-squared p-value from LRT H0: linear vs H1: categorical
+anova(linear, maximal)
+
+## Chi-squared p-value from LRT H0: linear vs H1: quadratic
+anova(linear, quadratic)
+```
+
+```{r}
+# Question 2(b)
+## Final model with a linear time model
+final <- gls(y~trt*time,data=compgrip.long,
+             corr=corSymm(form=~1|id),weights=varIdent(form=~1|time), method="REML")
+
+summary(final)
+(-2) * final$logLik
+anova(final)
+```
+
+# Question 3
+```{r}
+# -- Subset the data
+trtB_dat <- filter(compgrip.long, trt == "2")
+trtA_dat <- filter(compgrip.long, trt == "1")
+
+# -- Use the lmList function to get subject-specific intercepts and slopes
+trtA_fit <- lmList(y ~ time| id, data = trtA_dat)
+trtB_fit <- lmList(y ~ time| id, data = trtB_dat)
+
+# -- Mean intercept for subjects in group B
+mean(coef(trtB_fit)[[1]])
+
+# -- Mean slope for subjects in group B
+mean(coef(trtB_fit)[[2]])
+
+# -- Mean intercept for subjects in group A
+mean(coef(trtA_fit)[[1]])
+
+# -- Mean slope for subjects in group A
+mean(coef(trtA_fit)[[2]])
+
+```
+
+# Question 4
+```{r}
+# fit model to the observed responses for each subject
+first <- lmList(y ~ time | id, 
+                pool = FALSE, 
+                na.action = na.omit,
+                data = compgrip.long)
+
+# save coefficients into a dataframe
+out <- coef(first, 
+            augFrame = TRUE,
+            which = "trt")
+
+# rename the columns in the dataframe
+out <- out %>% 
+  rename(Intercept = "(Intercept)",
+         Slope = time)
+
+head(out)
+
+# Slide 46 - Second stage
+# data manipulation
+out$trt.f <- as.factor(out$trt)
+out$trt.f <- relevel(out$trt.f, ref="1")
+
+# Second stage: Intercepts model
+summary(lm(Intercept ~ trt.f, data=out))
+
+# Second stage: Slopes model
+summary(lm(Slope ~ trt.f, data=out))
+```
+# Question 5
+```{r}
+# Random intercepts & slopes model
+model <- lme(y ~ time + trt + time:trt, random = ~ 1 + time | id, method = "REML",
+                   data = compgrip.long)
+summary(model)
+
+# Estimated G matrix for variances and covariances of random effects
+getVarCov(model)
+
+# Estimated G correlation matrix
+cov2cor(getVarCov(model))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

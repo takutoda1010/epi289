@@ -27,12 +27,21 @@ library(lubridate)
 library(table1)
 library(ggthemes)
 library(ggrepel)
+library(dplyr)
 ```
 
 # Create the dataset
 
 ```{r}
 covsurge <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/EPI 946/Dataset/nsqip_op.csv")
+vaccine <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/EPI 946/Dataset/Final version - COVID vaccination prior to surgery 2019 to 2022 (1).csv")
+
+# Remove duplicates from the "vaccine" dataset
+vaccine <- vaccine %>%
+  distinct(PATIENT_DISPLAY_ID, .keep_all = TRUE)
+
+covsurge <- covsurge %>%
+  left_join(vaccine, by = c("IDN"="PATIENT_DISPLAY_ID"))
 ```
 
 ## Operation Day
@@ -44,9 +53,9 @@ covsurge <- covsurge %>%
   mutate(opedate = as.Date(Operation.Date, format ="%m/%d/%Y"))
 class(covsurge$opedate)
 
-# Extract data after March 1, 2020.
-# covsurge <- covsurge.original %>%
-  # filter(opedate >= as.Date("2020-03-01"))
+#Extract data after March 1, 2020.
+covsurge <- covsurge %>%
+   filter(opedate >= as.Date("2020-03-01"))
 ```
 
 # COVID Surge
@@ -386,10 +395,27 @@ covsurge$covid <- as.factor(covsurge$covid) # 3 missing values
 
 ```{r}
 # The dataset has only 2626 patients. Maybe it will related to strong bias and remove it.
+table(covsurge$Vaccinated.prior.to.Surgery.)
+
+# Filter rows with missing values in Vaccinated.prior.toSurgery
+missing_vaccinated_data <- covsurge %>%
+  filter(is.na(Vaccinated.prior.to.Surgery.)) %>%
+  select(opedate)
+
+# Display the missing_vaccinated_data
+print(missing_vaccinated_data) # All missing values were prior to Sep. 15, 2020.
+
+# pat_vac category: 0=No, 1=Yes
+covsurge <- covsurge %>%
+  mutate(pat_vac = ifelse(Vaccinated.prior.to.Surgery.=="Yes", 1,
+                          ifelse(Vaccinated.prior.to.Surgery.=="No"|is.na(Vaccinated.prior.to.Surgery.),0, NA)))
+covsurge$pat_vac[is.na(covsurge$pat_vac)] <-0
+sum(is.na(covsurge$pat_vac))
+table(covsurge$pat_vac, useNA="always") #2 missing values
+covsurge$pat_vac <- as.factor(covsurge$pat_vac)
 ```
 
 # Operation
-
 ## Type of surgery
 
 ```{r}
@@ -605,6 +631,7 @@ covsurge[104:141] <- lapply(covsurge[104:141], as.numeric)
 covsurge$comp <- ifelse(rowSums(covsurge[104:141], na.rm=TRUE)>0, 1, 0)
 covsurge$comp <- ifelse((covsurge$comp ==0 & covsurge$death ==1)|(covsurge$comp == 1 & covsurge$death ==1), 1, covsurge$comp)
 table(covsurge$comp)
+# covsurge$comp <- as.factor(covsurge$comp)
 ```
 
 # Missing Value
@@ -677,6 +704,7 @@ label(covsurge$copd) <- "COPD"
 label(covsurge$dialysis) <- "Dialysis"
 label(covsurge$aki) <- "AKI"
 label(covsurge$med_vac) <- "Medical staff vaccine"
+label(covsurge$pat_vac) <- "Patient COVID-19 vaccination"
 label(covsurge$covid) <- "Preoperative Covid Infection"
 label(covsurge$surg_type) <- "Type of Surgery"
 label(covsurge$anes) <- "Type of Anesthesia"
@@ -689,11 +717,13 @@ label(covsurge$postop_pulmo) <- "Pulmonary complication"
 label(covsurge$postop_cardio) <- "Cardiac complication"
 label(covsurge$postop_neuro) <- "Neurological complication"
 label(covsurge$ssi) <- "Surgical site complication"
+label(covsurge$comp) <- "Complication"
 label(covsurge$los) <- "Days in Hospital"
 label(covsurge$death) <- "Death"
 covsurge$surge <- factor(covsurge$surge, labels = c("Non-surge", "Surge"))
 
-tab1 <- table1(~age+sex+bmi+race+func+emergency+asa+dm+htn+imsp+ascites+sepsis+venti+cancer+chf+dyspnea+smk+copd+dialysis+aki+med_vac+covid+surg_type+anes+opetime+transfusion+conversion+reop+postop_vte+postop_hemo+postop_pulmo+postop_cardio+postop_neuro+ssi+los+death|surge, data=covsurge, overall = c(right="Overall"))
+tab1 <- table1(~age+sex+bmi+race+func+emergency+asa+dm+htn+imsp+ascites+sepsis+venti+cancer+chf+dyspnea+smk+copd+dialysis+aki+med_vac+pat_vac+covid+surg_type+anes+opetime+transfusion+conversion+reop+postop_vte+postop_hemo+postop_pulmo+postop_cardio+postop_neuro+ssi+comp+los+death|surge, data=covsurge, overall = c(right="Overall"))
+
 tab1
 ```
 
@@ -716,9 +746,11 @@ chisq.test(covsurge$surge, covsurge$imsp)
 chisq.test(covsurge$surge, covsurge$cancer)
 chisq.test(covsurge$surge, covsurge$smk)
 chisq.test(covsurge$surge, covsurge$copd)
+chisq.test(covsurge$surge, covsurge$pat_vac)
 chisq.test(covsurge$surge, covsurge$reop)
 chisq.test(covsurge$surge, covsurge$postop_hemo)
 chisq.test(covsurge$surge, covsurge$ssi)
+chisq.test(covsurge$surge, covsurge$comp)
 
 
 # Categorical variable (Fisher's exact test)
@@ -749,7 +781,7 @@ fisher.test(covsurge$surge, covsurge$death)
 ```
 # Main analysis
 ```{r}
-model1 <- glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid , family=binomial(link = 'logit'), data = covsurge)
+model1 <- glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid +pat_vac + delta, family=binomial(link = 'logit'), data = covsurge)
 summary(model1)
 exp(coef(model1))
 exp(confint(model1))
@@ -758,28 +790,35 @@ exp(confint(model1))
 # Secondary Analysis
 ```{r}
 # Death
-model2 <- glm(death ~ surge + age + sex + race + bmi + dm + htn + cancer + chf + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
+model2 <- glm(death ~ surge + age + sex + race + bmi + dm + htn + cancer + pat_vac + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
 summary(model2)
 exp(coef(model2))
 exp(confint(model2))
 
 # Reoperation
-model3 <- glm(reop ~ surge + age + sex + race + bmi + dm + htn + cancer + chf + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
+model3 <- glm(reop ~ surge + age + sex + race + bmi + dm + htn + cancer + pat_vac + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
 summary(model3)
 exp(coef(model3))
 exp(confint(model3))
 
 # VTE
-model4 <- glm(postop_vte ~ surge + age + sex + race + bmi + dm + htn + cancer + chf + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
+model4 <- glm(postop_vte ~ surge + age + sex + race + bmi + dm + htn + cancer + pat_vac + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
 summary(model4)
 exp(coef(model4))
 exp(confint(model4))
 
 # pulmonary
-model5 <- glm(postop_pulmo ~ surge + age + sex + race + bmi + dm + htn + cancer + chf + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
+model5 <- glm(postop_pulmo ~ surge + age + sex + race + bmi + dm + htn + cancer + pat_vac + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
 summary(model5)
 exp(coef(model5))
 exp(confint(model5))
+
+# Hemorrhage
+model6 <- glm(postop_pulmo ~ surge + age + sex + race + bmi + dm + htn + cancer + pat_vac + copd  + covid , family=binomial(link = 'logit'), data = covsurge)
+summary(model6)
+exp(coef(model6))
+exp(confint(model6))
+
 ```
 
 # Test of Homogeneity
@@ -790,10 +829,10 @@ table(covsurge$surge, covsurge$omicron) ## No omicron during the "surge" period
 # Delta
 table(covsurge$surge, covsurge$delta)
 
-model6 <- glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid + delta + surge*delta , family=binomial(link = 'logit'), data = covsurge)
-summary(model6)
-exp(coef(model6))
-exp(confint(model6))
+model7 <- glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid +pat_vac + delta + surge*delta , family=binomial(link = 'logit'), data = covsurge)
+summary(model7)
+exp(coef(model7))
+exp(confint(model7))
 
 ```
 
@@ -804,20 +843,23 @@ exp(confint(model6))
 # BMI (47 missing values)
 # ASA-PS (37 missing values)
 # Race (30 missing values)
-multiple <- covsurge[,c("comp", "surge", "age", "sex", "race", "bmi", "ses", "asa", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "covid")]
+multiple <- covsurge[,c("comp", "surge", "age", "sex", "race", "bmi", "ses", "asa", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "pat_vac", "covid", "delta")]
 
 # Check predictors (1 means that that column is used to impute the row variable; 0 means no use)
-test <- mice(multiple, m=1, print=F)
+test <- mice(multiple, m=5, print=F)
 test
 # Select variables to be analyzed
 predM <- test$predictorMatrix
-predM[c("comp", "surge", "age", "sex", "ses", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "covid"),] <- 0
-predM[,c("comp", "surge", "age", "sex", "ses", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "covid")] <- 0 
+predM[c("comp", "surge", "age", "sex", "ses", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "pat_vac", "covid", "delta"),] <- 0
+predM[,c("comp", "surge", "age", "sex", "ses", "func", "dm", "htn", "imsp", "ascites", "sepsis", "venti", "cancer", "chf", "copd", "dialysis", "aki", "pat_vac", "covid", "delta")] <- 0 
 predM
 
 # multi-imputation, here m=30
 mi <- mice(multiple, m=20, matix=50, predictorMatrix = predM, print = F, seed = 1005)
-primary_mod <- with(mi, stats::glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid , family=binomial(link = 'logit'), data = covsurge))
+primary_mod <- with(mi, stats::glm(comp ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid +pat_vac + delta, family=binomial(link = 'logit'), data = covsurge))
+
+# Create complete dataset
+dataset <- compliete(mi)
 
 # primary_mod
 miced_pool <- pool(primary_mod)
@@ -825,10 +867,12 @@ summary(miced_pool)
 coefficients((miced_pool))
 coef(miced_pool)
 
-# secondary
-secondary_mod <- with(mi, stats::glm(death ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid , family=binomial(link = 'logit'), data = covsurge))
-miced_pool_secondary <- pool(secondary_mod)
-summary(secondary_mod)
+beta <- -0.088667469
+exp(beta)
+SE <- 0.1101750
+lcl <- beta-qnorm(0.975)*SE 
+ucl <- beta+qnorm(0.975)*SE
+cbind(beta, lcl, ucl)
 ```
 
 # IPWeighting for confounding and selection bias
@@ -843,7 +887,7 @@ prop.table(table(covsurge$cens))
 ################################################
 
 # estimation of denominator of treatment weights
-denom.tx <- glm(surge ~ age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid, family = binomial(), data = covsurge)
+denom.tx <- glm(surge ~ age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid + pat_vac + delta, family = binomial(), data = covsurge)
 summary(denom.tx)
 pd.surge <- predict(denom.tx, type = "response")
 
@@ -853,7 +897,7 @@ summary(numer.tx)
 pn.surge <- predict(numer.tx, type = "response")
 
 # estimation of denominator of censoring weights
-denom.cens <- glm(cens ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid, family = binomial(), data = covsurge)
+denom.cens <- glm(cens ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid + pat_vac + delta, family = binomial(), data = covsurge)
 summary(denom.cens)
 
 pd.cens <- 1-predict(denom.cens, type = "response")
@@ -884,13 +928,14 @@ SE <- coef(summary(msm.sw))[,2]
 lcl <- beta-qnorm(0.975)*SE 
 ucl <- beta+qnorm(0.975)*SE
 cbind(beta, lcl, ucl)
+cbind(exp(beta), exp(lcl), exp(ucl))
 ```
 
 # IP weighting for selection bias and propensity score for confounding
 ```{r}
 # estimation of denominator of censoring weights
 #################### bmi, race, covid have missing value, then I removed them. ###############################
-denom.cens <- glm(cens ~ surge + age + sex + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki, family = binomial(), data = covsurge)
+denom.cens <- glm(cens ~ surge + age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid + pat_vac + delta, family = binomial(), data = covsurge)
 summary(denom.cens)
 
 covsurge.c <- covsurge[which(covsurge$cens!=1),]
@@ -899,7 +944,7 @@ covsurge.c$wc <- 1/(covsurge.c$pd.cens)
 summary(covsurge.c$wc)
 
 # PS: Parametric estimation with many covariates
-fit.para2 <- glm(surge ~ age + sex + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki, data=covsurge.c, family=binomial())
+fit.para2 <- glm(surge ~ age + sex + race + bmi + ses + asa + func + dm + htn + imsp + ascites + sepsis + venti + cancer + chf + copd + dialysis + aki + covid + pat_vac + delta, data=covsurge.c, family=binomial())
 summary(fit.para2)
 
 covsurge.c$p.surge <- predict(fit.para2, type="response")
@@ -909,6 +954,7 @@ summary(fit.ps)
 exp(coef(fit.ps))
 exp(confint(fit.ps))
 ```
+
 # Create the changes in complications
 ```{r}
 covsurge.nmv <- covsurge[which(!is.na(covsurge$comp)),]
@@ -945,4 +991,5 @@ ggplot(monthly_comp, aes(x = month, y = comp_rate)) +
   geom_vline(xintercept = as.numeric(as.Date("2020-03-01")), color = "red")
 
 ```
+
 
