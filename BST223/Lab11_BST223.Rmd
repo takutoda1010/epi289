@@ -1,0 +1,75 @@
+---
+title: "Lab11_BST223"
+author: "Takuto Yoshida"
+date: "2023-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+```{r}
+library(survival)
+library(foreign)
+library(ggplot2)
+library(tidyverse)
+```
+
+## R Markdown
+```{r}
+cibmtr <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Lab Materials/Week11/cibmtr_cleaned.csv")
+head(cibmtr)
+```
+
+```{r}
+# Unadjusted model
+mySurv.Un <- as.formula(Surv(time2, event2) ~ tcdYes)
+
+# Fit KM Curve
+fitKM.Un <- survfit(mySurv.Un, data = cibmtr)
+
+# Fit unadjusted Cox PH model
+fitCox.Un <- coxph(mySurv.Un, data = cibmtr)
+
+# Unadjusted Cox HR + CI
+fitCox.Un.HR <- exp(fitCox.Un$coefficients)
+fitCox.Un.CI <- exp(confint(fitCox.Un))
+
+# Plot
+
+```
+
+
+
+# Propensity score
+```{r}
+# Adjusted model
+myPSForm.V2 <- as.formula(tcdYes ~ pro1 + pro2 + pro3 + pro4
++ sexFemale
++ ageGrp1 + ageGrp2 + ageGrp3 + ageGrp4 + ageGrp5 + ageGrp6
++ raceBlack + raceAsianPI + raceOther
++ KarnofskyLow + dTypeALL + dTypeCML + dTypeMDS
++ dStatusInt + dStatusAdv + donorGrp88 + donorGrp78
++ matchCMVpm + matchCMVmp + matchCMVmm
++ graftMarrow + conditioningRNM)
+
+# Fit logistic regression
+fit.PS.X <- glm(myPSForm.V2, family=binomial(), data=cibmtr)
+
+# Extract estimated propensity scores
+pi.hat <- fit.PS.X$fitted.values
+head(pi.hat)
+```
+
+
+
+
+
+
+
+
+
+
+

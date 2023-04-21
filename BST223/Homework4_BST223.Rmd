@@ -9,6 +9,15 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Library
+```{r}
+library(survival)
+library(foreign)
+library(ggplot2)
+library(tidyverse)
+```
+
+
 ## Question1
 ```{r}
 umaru <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework4/Umaru.csv")
@@ -85,13 +94,14 @@ get_AFT_CI(fit=fitAFT_weibull, exponentiate=TRUE)
 # Question2
 ```{r}
 # Question2a
-bm <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework3/BoneMarrow.csv")
+bm <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework4/BoneMarrow_updated.csv")
 
 names(bm)
 str(bm)
 head(bm)
 fitPH <- coxph(Surv(time, status)~as.factor(plateS) + ageP + as.factor(maleP) + as.factor(cmvP) + waitCat + group + strata(hosp), data = bm)
 summary(fitPH)
+
 ```
 
 ```{r}
@@ -101,9 +111,6 @@ bm %>% filter(id %in% c(1, 5, 20))
 
 ```{r}
 # Question2e
-## Data cleaning
-bm$plateS <- ifelse(bm$plateT>0, 1, 0)
-
 ## Creating multiple recodes dataset
 names(bm)
 head(bm)
@@ -115,10 +122,12 @@ bm_cut <- tmerge(data1 = bm, data2 = bm,
 bm_cut %>% 
   filter(id %in% c(1:5, 20)) %>%
   select(c(id, plateS, plateT, status, time, tstart, tstop, stat, plt_time_vary))
+
 ```
 ```{r}
 # Question2f
-cox.1 <- coxph(Surv(tstart, tstop, stat) ~ as.factor(plateS) + ageP + as.factor(maleP) + as.factor(cmvP) + waitCat + group + strata(hosp), data = bm_cut)
+cox.1 <- coxph(Surv(tstart,tstop,stat) ~as.factor(plt_time_vary) + ageP + as.factor(maleP) +
+                as.factor(cmvP) + waitCat + group + strata(hosp), data = bm_cut)
 summary(cox.1)
 ```
 

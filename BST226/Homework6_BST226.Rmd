@@ -1,0 +1,89 @@
+---
+title: "Homework6_BST226"
+author: "Takuto Yoshida"
+date: "2023-04-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Hints
+```{r}
+
+```
+
+
+# Question1
+```{r}
+tumor <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment6/tumor.txt")
+colnames(tumor) <- c("id", "trt", "y")
+head(tumor)
+```
+```{r}
+mylogit <- glm(y ~ trt, family = binomial, data = tumor)
+summary(mylogit)
+```
+# Question5
+```{r}
+cbind(coef(mylogit), confint.default(mylogit))
+```
+
+# Question6
+```{r}
+# get point estimates and confidence intervals for exp(betas) (odds ratios)
+exp(cbind(coef(mylogit), confint.default(mylogit)))
+```
+
+# Part2
+# Question1
+```{r}
+seizure4 <- read.table("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST226/Homework/Assignment6/seizure4.txt")
+colnames(seizure4) <- c("id", "trt","age", "y")
+head(seizure4)
+```
+```{r}
+mypoisson <- glm(y ~ trt, family="poisson", data=seizure4)
+summary(mypoisson)
+```
+# Question3
+```{r}
+exp(cbind(coef(mypoisson), confint.default(mypoisson)))
+```
+
+# Question4
+```{r}
+mypoisson_q4 <- glm(y ~ trt + age, family="poisson", data=seizure4)
+summary(mypoisson_q4)
+```
+# Question5
+```{r}
+exp(cbind(coef(mypoisson_q4), confint.default(mypoisson_q4)))
+```
+
+# Question6
+```{r}
+myquasipoisson <- glm(y ~ trt + age, family="quasipoisson", data=seizure4)
+summary(myquasipoisson)
+```
+
+# Question7
+```{r}
+exp(cbind(coef(myquasipoisson), confint.default(myquasipoisson)))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,283 @@
+---
+title: "Homework5_BST223"
+author: "Takuto Yoshida"
+date: "2023-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+```{r}
+install.packages("lmtest")
+library(survival)
+library(foreign)
+library(ggplot2)
+library(tidyverse)
+library(survminer)
+```
+
+# Import Data
+```{r}
+umaru <- read.csv("/Users/yoshidatakuto/Dropbox/HSPH/MPH-CLE/Spring/BST223/Assignments/Homework5/Umaru.csv")
+head(umaru)
+umaru$time <- ifelse(umaru$time >= 730, 730, umaru$time)
+summary(umaru$time)
+```
+
+
+## Question1
+```{r}
+fit.km <- survfit(Surv(time, censor==1) ~ site + treat, data=umaru)
+
+surv_plot <- ggsurvplot(fit.km, data = umaru, 
+           pval = T,
+           title = "Kaplan-Meier Estimate of the Survival function for the four groups",
+           xlab = "Time to Drug Replapse (days)",
+           ylab = "Survival Probability",
+           conf.int = F,
+           legend.labs=c("SiteA - Short Treatment", "SiteA - Long Treatment", "SiteB - Short Treatment", "SiteB - Long Treatment"),
+           linetype = c(1, 2, 1, 2), 
+           palette = c("blue", "blue", "red", "red"),
+           pval.coord = c(600, 0.55),
+           legend.title = "",
+           legend = "none") 
+
+surv_plot$plot <- surv_plot$plot + 
+  theme(legend.text = element_text(size=8)) + 
+  theme(legend.position = c(0.85, 0.85)) + 
+  guides(color = guide_legend(title = "", override.aes = list(size = 2)))
+
+print(surv_plot)
+
+```
+# Question c
+```{r}
+# Weibull AFT model
+fitAFT_weibull <- survreg(Surv(time, censor==1) ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(site)*as.factor(treat), data = umaru, dist = "weibull")
+
+fitAFT_weibull.AF <- exp(fitAFT_weibull$coefficients)
+fitAFT_weibull.CI <- exp(confint(fitAFT_weibull))
+summary(fitAFT_weibull)
+
+# Cox proportional hazard model
+cox.1 <- coxph(Surv(time, censor==1) ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(site)*as.factor(treat), data = umaru)
+
+cox.1.HR <- exp(cox.1$coefficients)
+cox.1.CI <- exp(confint(cox.1))
+summary(cox.1)
+```
+# Question d
+```{r}
+# Cox proportional hazard model
+cox.2 <- coxph(Surv(time, censor==1) ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(site) + as.factor(treat), data = umaru)
+summary(cox.2)
+
+# Schoenfeld residuals
+sch.resid <- cox.zph(cox.2)
+sch.resid
+plot(sch.resid, resid=FALSE, var=6, col=c("red", "blue"))
+abline(h=coef(cox.2)[6])
+```
+# Question e
+```{r}
+# Update censor variable
+umaru$censor_adj <- ifelse(umaru$time <=365 & umaru$censor == 1, 1, 0) 
+
+# Update time variable
+umaru$time_adj <- ifelse(umaru$time > 365, 365, umaru$time)
+
+# Fit the model
+cox.3 <- coxph(Surv(time_adj, censor_adj==1) ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(site) + as.factor(treat), data = umaru)
+summary(cox.3)
+
+# Schoenfeld residuals
+sch.resid <- cox.zph(cox.3)
+sch.resid
+plot(sch.resid, resid=FALSE, var=6, col=c("red", "blue"))
+abline(h=coef(cox.3)[6])
+```
+# Question2
+## Question 2a
+```{r}
+# Unadjusted model
+mySurv.Un <- as.formula(Surv(time_adj, censor_adj==1) ~ site)
+
+# Fit Kaplan Meier
+fitKM.Un <- survfit(mySurv.Un, data=umaru)
+
+# Fit unadjusted Cox PH model
+fitCox.Un <- coxph(mySurv.Un, data = umaru)
+
+# Unadjusted Cox HR + CI
+fitCox.Un.HR <- exp(fitCox.Un$coefficients)
+fitCox.Un.CI <- exp(confint(fitCox.Un))
+summary(fitCox.Un)
+
+# Log-rank test
+log_rank_test <- survdiff(mySurv.Un, data = umaru)
+log_rank_pval <- log_rank_test$pval
+
+# Plot
+plot(fitKM.Un,
+     xlab="Time to Drug Relapse", 
+     ylab="Survivor function, S(t)",
+     lwd=3, 
+     col=c("red", "blue"), 
+     main = ("Unadjusted regression-based analysis "))
+legend(0, 0.2, c("Site A", "Site B"), lwd=3, col=c("red", "blue"), bty="n")
+text(225, 0.8, paste0("p-value: ", round(log_rank_pval, 3)))
+text(225, 0.9, paste0("HR: ", round(fitCox.Un.HR, 2)," 95% CI: (",round(fitCox.Un.CI[1], 2), ",", round(fitCox.Un.CI[2], 2), ")"))
+```
+```{r}
+# Adjusted model
+mySurv.Ad <- as.formula(Surv(time_adj, censor_adj==1) ~ as.factor(site) + age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(treat))
+
+# Adjusted Cox PH model
+fitCox.Ad <- coxph(mySurv.Ad, data = umaru)
+
+# Adjusted Cox HR + CI
+fitCox.Ad.HR <- exp(fitCox.Ad$coefficients["as.factor(site)1"])
+fitCox.Ad.CI <- exp(confint(fitCox.Ad)[1,])
+summary(fitCox.Ad)
+wald_test_pval_adjusted <- coef(summary(fitCox.Ad))["as.factor(site)1", "Pr(>|z|)"]
+
+
+## Modify dataset to calculate marginal survivor functions
+# Duplicate the dataset
+umaru2 <- umaru[rep(1:nrow(umaru), 2),]
+# Assign 1st replicate of dataset to A=0 and 2nd replicate to A=1
+umaru2$site <- rep(c(0,1), rep(nrow(umaru),2))
+# Calculate the estimated adjusted marginal survivor functions
+surv.Marg <- survexp(~site, data=umaru2, ratetable=fitCox.Ad)
+# Plot
+plot(surv.Marg,
+     xlab="Time to Drug Relapse", 
+     ylab="Survivor function, S(t)",
+     lwd=3, 
+     col=c("red", "blue"), main = "Adjusted regression-based analysis ")
+legend(0, 0.3, c("Site A", "Site B"),lwd=3, col=c("red", "blue"), bty="n")
+text(250, 0.7, paste0("p-value: ", ifelse(wald_test_pval_adjusted < 0.001, "< 0.001", round(wald_test_pval_adjusted, 3))))
+text(250, 0.8, paste0("HR: ", round(fitCox.Ad.HR, 2)," 95% CI: (",round(fitCox.Ad.CI[1], 2), ",", round(fitCox.Ad.CI[2], 2), ")"))
+```
+
+# Question 2b
+```{r}
+# Adjusted model
+myPSForm.V2 <- as.formula(site ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(treat))
+
+# Fit logistic regression
+fit.PS.X <- glm(myPSForm.V2, family=binomial(), data=umaru)
+
+# Extract estimated propensity scores
+pi.hat <- fit.PS.X$fitted.values
+head(pi.hat)
+
+### Second model ###
+# Adjusted model
+myPSForm.V2.2 <- as.formula(site ~ age + as.factor(nonwhite) + as.factor(ivdrug) + beckscore + as.factor(treat) + age*as.factor(nonwhite) + age*as.factor(ivdrug) + age*beckscore + age*as.factor(treat) + as.factor(nonwhite)*as.factor(ivdrug) + as.factor(nonwhite)*beckscore + as.factor(nonwhite)*as.factor(treat) + as.factor(ivdrug)*beckscore + as.factor(ivdrug)*as.factor(treat) + beckscore*as.factor(treat))
+
+# Fit logistic regression
+fit.PS.X.2 <- glm(myPSForm.V2.2, family=binomial(), data=umaru)
+
+# Extract estimated propensity scores
+pi.hat.2 <- fit.PS.X.2$fitted.values
+head(pi.hat.2)
+
+summary(fit.PS.X)
+summary(fit.PS.X.2)
+
+library(lmtest)
+lrtest(fit.PS.X, fit.PS.X.2)
+
+
+anova(fit.PS.X, fit.PS.X.2)
+```
+
+
+# Question 2c
+```{r}
+# Calculate weights
+A_i <- umaru$site
+pi.hat <- fit.PS.X.2$fitted.values
+W_i <- (A_i / pi.hat) + ((1-A_i) / (1-pi.hat))
+
+# Unadjusted model
+myPSForm.V1 <- as.formula(site ~ 1)
+fit.PS.1 <- glm(myPSForm.V1, family=binomial(), data=umaru)
+
+# Calculate stabilized weights
+pi.hat.marg <- fit.PS.1$fitted
+umaru$SW <- (A_i * pi.hat.marg / pi.hat) + ((1-A_i) * (1-pi.hat.marg) / (1-pi.hat))
+
+# Add propensity scores and weights to the dataset
+umaru$pi_hat <- pi.hat
+umaru$W_i <- W_i
+
+# Unstabilized weights plot
+umaru$site <- factor(umaru$site, labels = c("Site A", "Site B"))
+
+umaru$site <- factor(umaru$site, labels = c("Site A", "Site B"))
+
+umaru %>%
+  ggplot() +
+  geom_histogram(aes(x = pi_hat, weight = W_i, fill = site), bins = 30, alpha = 0.5) +
+  labs(x = "Propensity Score", y = "Unstabilized Weights") +
+  theme_minimal() + 
+  facet_wrap(~ site) +
+  scale_fill_manual(values = c("Site A" = "blue", "Site B" = "red"), name = "Site")
+
+# Stabilized weights plot
+umaru %>%
+  ggplot() +
+  geom_histogram(aes(x = pi_hat, weight = SW, fill = site), bins = 30, alpha = 0.5) +
+  labs(x = "Propensity Score", y = "Unstabilized Weights") +
+  theme_minimal() + 
+  facet_wrap(~ site) +
+  scale_fill_manual(values = c("Site A" = "blue", "Site B" = "red"), name = "Site")
+```
+
+# Question 2d
+```{r}
+# Propensity score-adjusted group-specific marginal survivor fn
+fitKM.PS.SW <- survfit(mySurv.Un, data=umaru, weights=umaru$SW)
+
+# Propensity score-adjusted Cox PH model
+fitCox.PS.SW <- coxph(mySurv.Un, data=umaru, weights=umaru$SW)
+
+# Propensity score-adjusted HR + CI (stabilized)
+fitCox.PS.SW.HR <- exp(fitCox.PS.SW$coefficients)
+fitCox.PS.SW.CI <- exp(confint(fitCox.PS.SW))
+
+summary(fitCox.PS.SW)
+
+# Plot weighed survivor curves
+plot(fitKM.PS.SW,
+     xlab="Time to Drug Relapse", ylab="Survivor function, S(t)",
+     lwd=3, col=c("red", "blue"),
+     main = "(Stabilized) Propensity-score weighted analysis")
+legend(0, 0.2, c("Site A", "Site B"),lwd=3, col=c("red", "blue"), bty="n")
+text(250, 0.9, paste0("HR: ", round(fitCox.PS.SW.HR,2)," 95% CI: (",round(fitCox.PS.SW.CI[1],2) ,",", round(fitCox.PS.SW.CI[2],2), ")"))
+
+# Plot unadjusted Kaplan-Meier curves
+plot(fitKM.Un, 
+     xlab="Time to Drug Relapse", 
+     ylab="Survivor function, S(t)",
+     lwd=3, 
+     col=c("red", "blue"), 
+     main = "Unadjusted, Adjusted, and Stabilized Propensity-Score Weighted Analysis")
+
+# Add the adjusted marginal survivor functions
+lines(surv.Marg, lwd = 3, lty = 2, col = c("red", "blue"))
+
+# Add the stabilized propensity-score weighted Kaplan-Meier curves
+lines(fitKM.PS.SW, lwd = 3, lty = 3, col = c("red", "blue"))
+
+# Update the legend to include all three line types
+legend(0, 0.4, c("Site A (Unadjusted)", "Site B (Unadjusted)", 
+                 "Site A (Adjusted)", "Site B (Adjusted)", 
+                 "Site A (Stabilized PS Weighted)", "Site B (Stabilized PS Weighted)"),
+       lwd = 3, lty = c(1, 1, 2, 2, 3, 3), col = c("red", "blue", "red", "blue", "red", "blue"), bty = "n", cex = 0.8)
+```
